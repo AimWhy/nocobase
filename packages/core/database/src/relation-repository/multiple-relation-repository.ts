@@ -1,90 +1,73 @@
-import { omit } from 'lodash';
-import { MultiAssociationAccessors, Op, Sequelize, Transaction, Transactionable } from 'sequelize';
-import {
-  CommonFindOptions,
-  CountOptions,
-  DestroyOptions,
-  Filter,
-  FindOneOptions,
-  FindOptions,
-  TargetKey,
-  TK,
-  UpdateOptions,
-} from '../repository';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import lodash from 'lodash';
+import { HasOne, MultiAssociationAccessors, Sequelize, Transaction } from 'sequelize';
+import injectTargetCollection from '../decorators/target-collection-decorator';
 import { updateModelByValues } from '../update-associations';
 import { UpdateGuard } from '../update-guard';
 import { RelationRepository, transaction } from './relation-repository';
-import { handleAppendsQuery } from '../utils';
-
-export type FindAndCountOptions = CommonFindOptions;
-
-export interface AssociatedOptions extends Transactionable {
-  tk?: TK;
-}
+import {
+  AssociatedOptions,
+  CountOptions,
+  DestroyOptions,
+  Filter,
+  FindOptions,
+  TargetKey,
+  UpdateOptions,
+  FirstOrCreateOptions,
+} from './types';
+import { valuesToFilter } from '../utils/filter-utils';
 
 export abstract class MultipleRelationRepository extends RelationRepository {
-  extendFindOptions(findOptions) {
-    return findOptions;
+  async targetRepositoryFilterOptionsBySourceValue(): Promise<any> {
+    let filterForeignKeyValue = this.sourceKeyValue;
+
+    if (this.isMultiTargetKey()) {
+      const sourceModel = await this.getSourceModel();
+
+      // @ts-ignore
+      filterForeignKeyValue = sourceModel.get(this.association.sourceKey);
+    }
+
+    return {
+      [this.association.foreignKey]: filterForeignKeyValue,
+    };
   }
 
   async find(options?: FindOptions): Promise<any> {
-    const transaction = await this.getTransaction(options);
+    const targetRepository = this.targetCollection.repository;
 
-    const findOptions = {
-      ...this.extendFindOptions(
-        this.buildQueryOptions({
-          ...options,
-        }),
-      ),
-      subQuery: false,
+    const association = this.association as any;
+
+    const oneFromTargetOptions = {
+      as: '_pivot_',
+      foreignKey: association.otherKey,
+      sourceKey: association.targetKey,
+      realAs: association.through.model.name,
     };
 
-    const getAccessor = this.accessors().get;
-    const sourceModel = await this.getSourceModel(transaction);
+    const pivotAssoc = new HasOne(association.target, association.through.model, oneFromTargetOptions);
 
-    if (findOptions.include && findOptions.include.length > 0) {
-      const ids = (
-        await sourceModel[getAccessor]({
-          ...findOptions,
-          includeIgnoreAttributes: false,
-          attributes: [this.targetKey()],
-          group: `${this.targetModel.name}.${this.targetKey()}`,
-          transaction,
-        })
-      ).map((row) => {
-        return { row, pk: row.get(this.targetKey()) };
-      });
+    const appendFilter = {
+      isPivotFilter: true,
+      association: pivotAssoc,
+      where: await this.targetRepositoryFilterOptionsBySourceValue(),
+    };
 
-      if (ids.length == 0) {
-        return [];
-      }
-
-      return await handleAppendsQuery({
-        templateModel: ids[0].row,
-        queryPromises: findOptions.include.map((include) => {
-          return sourceModel[getAccessor]({
-            ...omit(findOptions, ['limit', 'offset']),
-            include: [include],
-            where: {
-              [this.targetKey()]: {
-                [Op.in]: ids.map((id) => id.pk),
-              },
-            },
-            transaction,
-          }).then((rows) => {
-            return { rows, include };
-          });
-        }),
-      });
-    }
-
-    return await sourceModel[getAccessor]({
-      ...findOptions,
-      transaction,
+    return targetRepository.find({
+      include: [appendFilter],
+      ...options,
     });
   }
 
-  async findAndCount(options?: FindAndCountOptions): Promise<[any[], number]> {
+  async findAndCount(options?: FindOptions): Promise<[any[], number]> {
     const transaction = await this.getTransaction(options, false);
 
     return [
@@ -103,11 +86,17 @@ export abstract class MultipleRelationRepository extends RelationRepository {
     const transaction = await this.getTransaction(options);
 
     const sourceModel = await this.getSourceModel(transaction);
+    if (!sourceModel) return 0;
+
     const queryOptions = this.buildQueryOptions(options);
+    const include = queryOptions.include?.filter((item: { association: string }) => {
+      const association = this.targetModel.associations?.[item.association];
+      return association?.associationType !== 'BelongsToArray';
+    });
 
     const count = await sourceModel[this.accessors().get]({
       where: queryOptions.where,
-      include: queryOptions.include,
+      include,
       includeIgnoreAttributes: false,
       attributes: [
         [
@@ -126,7 +115,7 @@ export abstract class MultipleRelationRepository extends RelationRepository {
     return parseInt(count.count);
   }
 
-  async findOne(options?: FindOneOptions): Promise<any> {
+  async findOne(options?: FindOptions): Promise<any> {
     const transaction = await this.getTransaction(options, false);
     const rows = await this.find({ ...options, limit: 1, transaction });
     return rows.length == 1 ? rows[0] : null;
@@ -140,20 +129,15 @@ export abstract class MultipleRelationRepository extends RelationRepository {
   })
   async remove(options: TargetKey | TargetKey[] | AssociatedOptions): Promise<void> {
     const transaction = await this.getTransaction(options);
-    let handleKeys = options['tk'];
-
-    if (!Array.isArray(handleKeys)) {
-      handleKeys = [handleKeys];
-    }
-
     const sourceModel = await this.getSourceModel(transaction);
-    await sourceModel[this.accessors().removeMultiple](handleKeys, {
+    await sourceModel[this.accessors().removeMultiple](this.convertTks(options), {
       transaction,
     });
     return;
   }
 
   @transaction()
+  @injectTargetCollection
   async update(options?: UpdateOptions): Promise<any> {
     const transaction = await this.getTransaction(options);
 
@@ -161,10 +145,8 @@ export abstract class MultipleRelationRepository extends RelationRepository {
 
     const values = guard.sanitize(options.values);
 
-    const queryOptions = this.buildQueryOptions(options as any);
-
     const instances = await this.find({
-      ...queryOptions,
+      ...(lodash.omit(options, ['values']) as any),
       transaction,
     });
 
@@ -172,7 +154,7 @@ export abstract class MultipleRelationRepository extends RelationRepository {
       await updateModelByValues(instance, values, {
         ...options,
         sanitized: true,
-        sourceModel: this.sourceInstance,
+        sourceModel: await this.getSourceModel(transaction),
         transaction,
       });
     }
@@ -193,7 +175,7 @@ export abstract class MultipleRelationRepository extends RelationRepository {
     return instances;
   }
 
-  async destroy(options?: TK | DestroyOptions): Promise<Boolean> {
+  async destroy(options?: TargetKey | DestroyOptions): Promise<boolean> {
     return false;
   }
 
@@ -216,5 +198,11 @@ export abstract class MultipleRelationRepository extends RelationRepository {
 
   protected accessors() {
     return <MultiAssociationAccessors>super.accessors();
+  }
+
+  @transaction()
+  async updateOrCreate(options: FirstOrCreateOptions) {
+    const result = await super.updateOrCreate(options);
+    return Array.isArray(result) ? result[0] : result;
   }
 }

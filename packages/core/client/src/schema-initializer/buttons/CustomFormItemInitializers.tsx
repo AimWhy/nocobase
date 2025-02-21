@@ -1,45 +1,69 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { SchemaInitializer } from '../SchemaInitializer';
-import { gridRowColWrap, useCustomFormItemInitializerFields, useInheritsFormItemInitializerFields } from '../utils';
+import { CompatibleSchemaInitializer } from '../../application/schema-initializer/CompatibleSchemaInitializer';
+import { SchemaInitializerChildren } from '../../application/schema-initializer/components/SchemaInitializerChildren';
 import { useCompile } from '../../schema-component';
+import { gridRowColWrap, useCustomFormItemInitializerFields, useInheritsFormItemInitializerFields } from '../utils';
 
 // 表单里配置字段
-export const CustomFormItemInitializers = (props: any) => {
+const ParentCollectionFields = () => {
+  const inheritFields = useInheritsFormItemInitializerFields({ component: 'AssignedField' });
   const { t } = useTranslation();
   const compile = useCompile();
-  const { insertPosition, component } = props;
-  const inheritFields = useInheritsFormItemInitializerFields();
-  const fieldItems: any[] = [
+  if (!inheritFields?.length) return null;
+  const res = [];
+  inheritFields.forEach((inherit) => {
+    Object.values(inherit)[0].length &&
+      res.push({
+        type: 'itemGroup',
+        divider: true,
+        title: t(`Parent collection fields`) + '(' + compile(`${Object.keys(inherit)[0]}`) + ')',
+        children: Object.values(inherit)[0],
+      });
+  });
+  return <SchemaInitializerChildren>{res}</SchemaInitializerChildren>;
+};
+
+const commonOptions = {
+  wrap: gridRowColWrap,
+  icon: 'SettingOutlined',
+  title: '{{t("Configure fields")}}',
+  items: [
     {
       type: 'itemGroup',
-      title: t('Configure fields'),
-      children: useCustomFormItemInitializerFields(),
+      title: '{{t("Configure fields")}}',
+      name: 'configureFields',
+      useChildren: useCustomFormItemInitializerFields,
     },
-  ];
-  if (inheritFields?.length > 0) {
-    inheritFields.forEach((inherit) => {
-      Object.values(inherit)[0].length &&
-        fieldItems.push(
-          {
-            type: 'divider',
-          },
-          {
-            type: 'itemGroup',
-            title: t(`Parent collection fields`) + '(' + compile(`${Object.keys(inherit)[0]}`) + ')',
-            children: Object.values(inherit)[0],
-          },
-        );
-    });
-  }
-  return (
-    <SchemaInitializer.Button
-      wrap={gridRowColWrap}
-      icon={'SettingOutlined'}
-      items={fieldItems}
-      insertPosition={insertPosition}
-      component={component}
-      title={component ? null : t('Configure fields')}
-    />
-  );
+    {
+      name: 'parentCollectionFields',
+      Component: ParentCollectionFields,
+    },
+  ],
 };
+
+/**
+ * @deprecated
+ * use `customFormItemInitializers` instead
+ */
+export const customFormItemInitializers_deprecated = new CompatibleSchemaInitializer({
+  name: 'CustomFormItemInitializers',
+  ...commonOptions,
+});
+
+export const customFormItemInitializers = new CompatibleSchemaInitializer(
+  {
+    name: 'assignFieldValuesForm:configureFields',
+    ...commonOptions,
+  },
+  customFormItemInitializers_deprecated,
+);

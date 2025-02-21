@@ -1,14 +1,24 @@
-import { ArrayTable } from '@formily/antd';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import { ArrayTable } from '@formily/antd-v5';
 import { ISchema } from '@formily/react';
 import { uid } from '@formily/shared';
 import cloneDeep from 'lodash/cloneDeep';
 import set from 'lodash/set';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAPIClient, useRequest } from '../../api-client';
-import { useRecord, RecordProvider } from '../../record-provider';
-import { ActionContext, SchemaComponent, useCompile } from '../../schema-component';
-import { useCollectionManager } from '../hooks';
+import { useCollectionParentRecordData } from '../../data-source';
+import { RecordProvider, useRecord } from '../../record-provider';
+import { ActionContextProvider, SchemaComponent, useCompile } from '../../schema-component';
+import { useCollectionManager_deprecated } from '../hooks';
 import { IField } from '../interfaces/types';
 import * as components from './components';
 
@@ -29,6 +39,9 @@ const getSchema = (schema: IField, record: any, compile, getContainer): ISchema 
       [uid()]: {
         type: 'void',
         'x-component': 'Action.Drawer',
+        'x-component-props': {
+          getContainer: '{{ getContainer }}',
+        },
         'x-decorator': 'Form',
         'x-decorator-props': {
           useValues(options) {
@@ -52,37 +65,49 @@ const getSchema = (schema: IField, record: any, compile, getContainer): ISchema 
           },
           // @ts-ignore
           ...properties,
+          description: {
+            type: 'string',
+            title: '{{t("Description")}}',
+            'x-decorator': 'FormItem',
+            'x-component': 'Input.TextArea',
+          },
         },
       },
     },
   };
 };
 
-
-
 export const ViewCollectionField = (props) => {
   const record = useRecord();
-  return <ViewFieldAction item={record} {...props} />;
+  const parentRecordData = useCollectionParentRecordData();
+  return <ViewFieldAction item={record} parentItem={parentRecordData} {...props} />;
 };
 
 export const ViewFieldAction = (props) => {
-  const { scope, getContainer, item: record, children } = props;
-  const { getInterface } = useCollectionManager();
+  const { scope, getContainer, item: record, parentItem: parentRecord, children } = props;
+  const { getInterface, collections } = useCollectionManager_deprecated();
   const [visible, setVisible] = useState(false);
   const [schema, setSchema] = useState({});
   const api = useAPIClient();
   const { t } = useTranslation();
   const compile = useCompile();
   const [data, setData] = useState<any>({});
-
+  const currentCollections = useMemo(() => {
+    return collections.map((v) => {
+      return {
+        label: compile(v.title),
+        value: v.name,
+      };
+    });
+  }, []);
   return (
-    <RecordProvider record={record}>
-      <ActionContext.Provider value={{ visible, setVisible }}>
+    <RecordProvider record={record} parent={parentRecord}>
+      <ActionContextProvider value={{ visible, setVisible }}>
         <a
           onClick={async () => {
             const { data } = await api.resource('collections.fields', record.collectionName).get({
               filterByTk: record.name,
-              appends: ['uiSchema', 'reverseField'],
+              appends: ['reverseField'],
             });
             setData(data?.data);
             const interfaceConf = getInterface(record.interface);
@@ -115,10 +140,11 @@ export const ViewFieldAction = (props) => {
             getContainer,
             showReverseFieldConfig: !data?.reverseField,
             createOnly: !true,
+            collections: currentCollections,
             ...scope,
           }}
         />
-      </ActionContext.Provider>
+      </ActionContextProvider>
     </RecordProvider>
   );
 };

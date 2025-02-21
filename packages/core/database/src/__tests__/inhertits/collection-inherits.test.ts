@@ -1,9 +1,19 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import { BelongsToManyRepository } from '@nocobase/database';
 import Database from '../../database';
 import { InheritedCollection } from '../../inherited-collection';
 import { mockDatabase } from '../index';
-import pgOnly from './helper';
+import { isPg } from '@nocobase/test';
 
-pgOnly()('collection inherits', () => {
+describe.runIf(isPg())('collection inherits', () => {
   let db: Database;
 
   beforeEach(async () => {
@@ -13,6 +23,418 @@ pgOnly()('collection inherits', () => {
 
   afterEach(async () => {
     await db.close();
+  });
+
+  it('should load parent collection with association field', async () => {
+    const User = db.collection({
+      name: 'users',
+      autoGenId: false,
+      timestamps: false,
+      fields: [
+        {
+          name: 'roles',
+          type: 'belongsToMany',
+          target: 'roles',
+          through: 'rolesUsers',
+        },
+      ],
+    });
+
+    User.setField('roles', {
+      type: 'belongsToMany',
+      target: 'roles',
+      through: 'rolesUsers',
+    });
+
+    User.setField('id', {
+      type: 'bigInt',
+      primaryKey: true,
+    });
+
+    const Role = db.collection({
+      name: 'roles',
+      autoGenId: false,
+      fields: [
+        {
+          name: 'name',
+          primaryKey: true,
+          type: 'string',
+        },
+        {
+          name: 'users',
+          type: 'belongsToMany',
+          target: 'users',
+          through: 'rolesUsers',
+        },
+      ],
+    });
+
+    await db.sync();
+
+    let err;
+    try {
+      const child = db.collection({
+        name: 'child',
+        inherits: ['users'],
+      });
+    } catch (e) {
+      err = e;
+    }
+
+    expect(err).toBeUndefined();
+  });
+
+  it('should emit afterSync event', async () => {
+    const Root = db.collection({
+      name: 'root',
+      fields: [
+        { name: 'name', type: 'string' },
+        {
+          name: 'bs',
+          type: 'hasMany',
+          target: 'b',
+          foreignKey: 'root_id',
+        },
+      ],
+    });
+
+    const Child = db.collection({
+      name: 'child',
+      inherits: ['root'],
+    });
+
+    const fn = vi.fn();
+    db.on('child.afterSync', (options) => {
+      fn();
+    });
+
+    await db.sync();
+
+    expect(fn).toBeCalled();
+  });
+
+  it('should append __collection with eager load', async () => {
+    const Root = db.collection({
+      name: 'root',
+      fields: [
+        { name: 'name', type: 'string' },
+        {
+          name: 'bs',
+          type: 'hasMany',
+          target: 'b',
+          foreignKey: 'root_id',
+        },
+      ],
+    });
+
+    const Child = db.collection({
+      name: 'child',
+      inherits: ['root'],
+    });
+
+    const B = db.collection({
+      name: 'b',
+      fields: [{ name: 'name', type: 'string' }],
+    });
+
+    await db.sync();
+
+    await Child.repository.create({
+      values: {
+        name: 'child1',
+        bs: [
+          {
+            name: 'b1',
+          },
+        ],
+      },
+    });
+
+    const data = await Root.repository.findOne({
+      fields: ['bs.name'],
+    });
+
+    expect(data.get('__collection')).toEqual('child');
+    expect(data.get('bs')[0].get('name')).toEqual('b1');
+  });
+
+  it('should not remove parent field reference map after child rewrite field', async () => {
+    const through = db.collection({
+      name: 'through',
+      fields: [{ name: 'name', type: 'string' }],
+    });
+
+    const rootCollection = db.collection({
+      name: 'root',
+      fields: [
+        { name: 'name', type: 'string' },
+        {
+          name: 'targets',
+          type: 'belongsToMany',
+          target: 'root-target',
+          through: 'through',
+          foreignKey: 'rootId',
+          otherKey: 'targetId',
+        },
+      ],
+    });
+
+    const rootTarget = db.collection({
+      name: 'root-target',
+      fields: [{ name: 'name', type: 'string' }],
+    });
+
+    await db.sync({ force: true });
+
+    expect(db.referenceMap.getReferences('root-target')).toHaveLength(1);
+
+    const child = db.collection({
+      name: 'child',
+      inherits: ['root'],
+    });
+
+    const childTarget = db.collection({
+      name: 'child-target',
+      inherits: ['root-target'],
+    });
+
+    await child.setField('targets', {
+      name: 'targets',
+      type: 'belongsToMany',
+      target: 'child-target',
+      through: 'through',
+      foreignKey: 'rootId',
+      otherKey: 'targetId',
+    });
+
+    await db.sync();
+
+    expect(db.referenceMap.getReferences('root-target')).toHaveLength(1);
+  });
+
+  it('should append collection name in eager load', async () => {
+    const rootCollection = db.collection({
+      name: 'assoc',
+      fields: [
+        { name: 'name', type: 'string' },
+        { type: 'belongsToMany', name: 'other-assocs' },
+      ],
+    });
+
+    const childCollection = db.collection({
+      name: 'child',
+      inherits: ['assoc'],
+    });
+
+    const otherAssoc = db.collection({
+      name: 'other-assocs',
+      fields: [{ name: 'name', type: 'string' }],
+    });
+
+    const User = db.collection({
+      name: 'users',
+      fields: [
+        {
+          name: 'name',
+          type: 'string',
+        },
+        {
+          name: 'assocs',
+          type: 'hasMany',
+          target: 'assoc',
+        },
+      ],
+    });
+
+    await db.sync();
+
+    const child = await childCollection.repository.create({
+      values: {
+        name: 'child1',
+      },
+    });
+
+    await User.repository.create({
+      values: {
+        name: 'user1',
+        assocs: [
+          {
+            id: child.get('id'),
+          },
+        ],
+      },
+    });
+
+    const users = await User.repository.find({
+      appends: ['assocs.other-assocs'],
+    });
+
+    const user = users[0];
+
+    const assoc = user.get('assocs')[0];
+    expect(assoc.get('__tableName')).toEqual(childCollection.model.tableName);
+    expect(assoc.get('__schemaName')).toEqual(childCollection.collectionSchema());
+
+    expect(user.get('assocs')[0].get('__collection')).toBe('child');
+  });
+
+  it('should list data filtered by child type', async () => {
+    const assocs = db.collection({
+      name: 'assocs',
+      fields: [{ name: 'name', type: 'string' }],
+    });
+
+    const rootCollection = db.collection({
+      name: 'root',
+      fields: [
+        { name: 'name', type: 'string' },
+        { name: 'assocs', type: 'hasMany', target: 'assocs' },
+      ],
+    });
+
+    const child1Collection = db.collection({
+      name: 'child1',
+      inherits: ['root'],
+    });
+
+    const child2Collection = db.collection({
+      name: 'child2',
+      inherits: ['root'],
+    });
+
+    await db.sync();
+
+    await rootCollection.repository.create({
+      values: {
+        name: 'root1',
+        assocs: [
+          {
+            name: 'assoc1',
+          },
+        ],
+      },
+    });
+
+    await child1Collection.repository.create({
+      values: [
+        {
+          name: 'child1-1',
+          assocs: [
+            {
+              name: 'child-assoc1-1',
+            },
+          ],
+        },
+        {
+          name: 'child1-2',
+          assocs: [{ name: 'child-assoc1-2' }],
+        },
+      ],
+    });
+
+    await child2Collection.repository.create({
+      values: [{ name: 'child2-1' }, { name: 'child2-2' }],
+    });
+
+    const records = await rootCollection.repository.find({
+      filter: {
+        '__collection.$childIn': [child1Collection.name],
+      },
+      appends: ['assocs'],
+    });
+
+    expect(records.every((r) => r.get('__collection') === child1Collection.name)).toBe(true);
+
+    const records2 = await rootCollection.repository.find({
+      filter: {
+        '__collection.$childNotIn': [child1Collection.name],
+      },
+    });
+    expect(records2.every((r) => r.get('__collection') !== child1Collection.name)).toBe(true);
+
+    const recordsWithFilter = await rootCollection.repository.find({
+      filter: {
+        '__collection.$childIn': [child1Collection.name],
+        assocs: {
+          name: 'child-assoc1-1',
+        },
+      },
+    });
+
+    expect(recordsWithFilter.every((r) => r.get('__collection') == child1Collection.name)).toBe(true);
+
+    const filterWithUndefined = await rootCollection.repository.find({
+      filter: {
+        '__collection.$childIn': 'undefined',
+      },
+    });
+
+    expect(filterWithUndefined).toHaveLength(0);
+  });
+
+  it('should list collection name in relation repository', async () => {
+    const personTagCollection = db.collection({
+      name: 'personTags',
+      fields: [{ name: 'name', type: 'string' }],
+    });
+
+    const studentTagCollection = db.collection({
+      name: 'studentTags',
+      inherits: ['personTags'],
+      fields: [{ name: 'school', type: 'string' }],
+    });
+
+    const personCollection = db.collection({
+      name: 'person',
+      fields: [{ name: 'tags', type: 'belongsToMany', target: 'personTags' }],
+    });
+
+    const studentCollection = db.collection({
+      name: 'student',
+      inherits: ['person'],
+      fields: [],
+    });
+
+    await db.sync();
+
+    const studentTag1 = await studentTagCollection.repository.create({
+      values: {
+        name: 'studentTag',
+        school: 'school1',
+      },
+    });
+
+    const personTag1 = await personTagCollection.repository.create({
+      values: {
+        name: 'personTag',
+      },
+    });
+
+    await studentCollection.repository.create({
+      values: {
+        tags: [
+          {
+            id: studentTag1.get('id'),
+          },
+          {
+            id: personTag1.get('id'),
+          },
+        ],
+      },
+    });
+
+    const person1 = await personCollection.repository.findOne({});
+
+    const tags = await personCollection.repository
+      .relation<BelongsToManyRepository>('tags')
+      .of(person1.get('id'))
+      .find({});
+
+    const personTag = tags.find((tag) => tag.get('name') === 'personTag');
+    const studentTag = tags.find((tag) => tag.get('name') === 'studentTag');
+
+    expect(personTag.get('__collection')).toEqual(personTagCollection.name);
+    expect(studentTag.get('__collection')).toEqual(studentTagCollection.name);
   });
 
   it('should create inherits with table name contains upperCase', async () => {
@@ -39,7 +461,7 @@ pgOnly()('collection inherits', () => {
     });
   });
 
-  it('should create inherits from empty table', async () => {
+  it('should throw error when create inherits from empty table', async () => {
     const empty = db.collection({
       name: 'empty',
       timestamps: false,
@@ -64,22 +486,20 @@ pgOnly()('collection inherits', () => {
       fields: [{ type: 'string', name: 'name' }],
     });
 
-    await db.sync({
-      force: false,
-      alter: {
-        drop: false,
-      },
-    });
+    let error;
+    try {
+      await db.sync({
+        force: false,
+        alter: {
+          drop: false,
+        },
+      });
+    } catch (e) {
+      error = e;
+    }
 
-    expect(inherits instanceof InheritedCollection).toBeTruthy();
-
-    const record = await inherits.repository.create({
-      values: {
-        name: 'test',
-      },
-    });
-
-    expect(record.get('name')).toEqual('test');
+    expect(error).toBeTruthy();
+    expect(error.message.includes("can't inherit from")).toBeTruthy();
   });
 
   it('should not throw error when fields have same type with parent', async () => {
@@ -886,11 +1306,13 @@ pgOnly()('collection inherits', () => {
 
     const studentTableInfo = await db.sequelize.getQueryInterface().describeTable(student.model.tableName);
 
-    expect(studentTableInfo.score).toBeDefined();
-    expect(studentTableInfo.name).toBeDefined();
-    expect(studentTableInfo.id).toBeDefined();
-    expect(studentTableInfo.createdAt).toBeDefined();
-    expect(studentTableInfo.updatedAt).toBeDefined();
+    const getField = (name) => student.model.rawAttributes[name].field;
+
+    expect(studentTableInfo[getField('score')]).toBeDefined();
+    expect(studentTableInfo[getField('name')]).toBeDefined();
+    expect(studentTableInfo[getField('id')]).toBeDefined();
+    expect(studentTableInfo[getField('createdAt')]).toBeDefined();
+    expect(studentTableInfo[getField('updatedAt')]).toBeDefined();
   });
 
   it('should get parent fields', async () => {

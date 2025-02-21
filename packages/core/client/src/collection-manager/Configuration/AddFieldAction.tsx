@@ -1,34 +1,38 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { PlusOutlined } from '@ant-design/icons';
-import { ArrayTable } from '@formily/antd';
-import { useForm } from '@formily/react';
+import { ArrayTable } from '@formily/antd-v5';
+import { useField, useForm } from '@formily/react';
 import { uid } from '@formily/shared';
-import { Button, Dropdown, Menu } from 'antd';
+import { Button, Dropdown, MenuProps } from 'antd';
 import { cloneDeep } from 'lodash';
-import React, { useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRequest } from '../../api-client';
+import { CollectionFieldInterface } from '../../data-source';
 import { RecordProvider, useRecord } from '../../record-provider';
-import { ActionContext, SchemaComponent, useActionContext, useCompile } from '../../schema-component';
-import { useCancelAction } from '../action-hooks';
-import { useCollectionManager } from '../hooks';
-import { useOptions } from '../hooks/useOptions';
-import { IField } from '../interfaces/types';
+import { ActionContextProvider, SchemaComponent, useActionContext, useCompile } from '../../schema-component';
 import { useResourceActionContext, useResourceContext } from '../ResourceActionProvider';
+import { useCancelAction } from '../action-hooks';
+import { useCollectionManager_deprecated } from '../hooks';
+import useDialect from '../hooks/useDialect';
 import * as components from './components';
-import { getOptions } from './interfaces';
+import { useFieldInterfaceOptions } from './interfaces';
 
-const getSchema = (schema: IField, record: any, compile) => {
+const getSchema = (schema: CollectionFieldInterface, record: any, compile) => {
   if (!schema) {
     return;
   }
 
-  const properties = cloneDeep(schema.properties) as any;
+  const properties = schema.getConfigureFormProperties();
 
-  if (schema.hasDefaultValue === true) {
-    properties['defaultValue'] = cloneDeep(schema?.default?.uiSchema);
-    properties['defaultValue']['title'] = compile('{{ t("Default value") }}');
-    properties['defaultValue']['x-decorator'] = 'FormItem';
-  }
   const initialValue: any = {
     name: `f_${uid()}`,
     ...cloneDeep(schema.default),
@@ -70,6 +74,12 @@ const getSchema = (schema: IField, record: any, compile) => {
           },
           // @ts-ignore
           ...properties,
+          description: {
+            type: 'string',
+            title: '{{t("Description")}}',
+            'x-decorator': 'FormItem',
+            'x-component': 'Input.TextArea',
+          },
           footer: {
             type: 'void',
             'x-component': 'Action.Drawer.Footer',
@@ -103,6 +113,7 @@ export const useCollectionFieldFormValues = () => {
     getValues() {
       const values = cloneDeep(form.values);
       if (values.autoCreateReverseField) {
+        /* empty */
       } else {
         delete values.reverseField;
       }
@@ -114,24 +125,33 @@ export const useCollectionFieldFormValues = () => {
 
 const useCreateCollectionField = () => {
   const form = useForm();
-  const { refreshCM } = useCollectionManager();
+  const { refreshCM } = useCollectionManager_deprecated();
   const ctx = useActionContext();
   const { refresh } = useResourceActionContext();
   const { resource } = useResourceContext();
+  const field = useField();
   return {
     async run() {
       await form.submit();
+      field.data = field.data || {};
+      field.data.loading = true;
       const values = cloneDeep(form.values);
       if (values.autoCreateReverseField) {
+        /* empty */
       } else {
         delete values.reverseField;
       }
       delete values.autoCreateReverseField;
-      await resource.create({ values });
-      ctx.setVisible(false);
-      await form.reset();
-      refresh();
-      await refreshCM();
+      try {
+        await resource.create({ values });
+        ctx.setVisible(false);
+        await form.reset();
+        field.data.loading = false;
+        refresh();
+        await refreshCM();
+      } catch (error) {
+        field.data.loading = false;
+      }
     },
   };
 };
@@ -142,25 +162,41 @@ export const AddCollectionField = (props) => {
 };
 
 export const AddFieldAction = (props) => {
-  const { scope, getContainer, item: record, children, trigger, align } = props;
-  const { getInterface, getTemplate } = useCollectionManager();
+  const { scope, getContainer, item: record, children, trigger, align, database } = props;
+  const { getInterface, getTemplate, collections, getCollection } = useCollectionManager_deprecated();
   const [visible, setVisible] = useState(false);
   const [targetScope, setTargetScope] = useState();
   const [schema, setSchema] = useState({});
   const compile = useCompile();
   const { t } = useTranslation();
-  const options = useOptions();
-  const getFieldOptions = () => {
+  const { isDialect } = useDialect();
+  const options = useFieldInterfaceOptions();
+  const fields = getCollection(record.name)?.options?.fields || record.fields || [];
+
+  const currentCollections = useMemo(() => {
+    return collections.map((v) => {
+      return {
+        label: compile(v.title),
+        value: v.name,
+      };
+    });
+  }, []);
+  const getFieldOptions = useCallback(() => {
     const { availableFieldInterfaces } = getTemplate(record.template) || {};
-    const { exclude, include } = availableFieldInterfaces || {};
+    const { exclude, include } = (availableFieldInterfaces || {}) as any;
     const optionArr = [];
-    getOptions().forEach((v) => {
+    options.forEach((v) => {
       if (v.key === 'systemInfo') {
         optionArr.push({
           ...v,
           children: v.children.filter((v) => {
-            if (v.value === 'id') {
-              return typeof record['autoGenId'] === 'boolean' ? record['autoGenId'] : true;
+            if (v.hidden) {
+              return false;
+            } else if (v.value === 'tableoid') {
+              if (include?.length) {
+                return include.includes(v.value);
+              }
+              return database?.dialect === 'postgres';
             } else {
               return typeof record[v.value] === 'boolean' ? record[v.value] : true;
             }
@@ -170,7 +206,7 @@ export const AddFieldAction = (props) => {
         let children = [];
         if (include?.length) {
           include.forEach((k) => {
-            const field = v.children.find((h) => [k, k.interface].includes(h.value));
+            const field = v?.children?.find((h) => [k, k.interface].includes(h.name));
             field &&
               children.push({
                 ...field,
@@ -178,13 +214,13 @@ export const AddFieldAction = (props) => {
               });
           });
         } else if (exclude?.length) {
-          children = v.children.filter((v) => {
-            return !exclude.includes(v.value);
+          children = v?.children?.filter((v) => {
+            return !exclude.includes(v.name);
           });
         } else {
-          children = v.children;
+          children = v?.children;
         }
-        children.length &&
+        children?.length &&
           optionArr.push({
             ...v,
             children,
@@ -192,74 +228,117 @@ export const AddFieldAction = (props) => {
       }
     });
     return optionArr;
-  };
+  }, [getTemplate, record]);
+  const items = useMemo<MenuProps['items']>(() => {
+    return getFieldOptions()
+      .map((option) => {
+        if (option?.children?.length === 0) {
+          return null;
+        }
+        if (record.template === 'view') {
+          return {
+            type: 'group',
+            label: compile(option.label),
+            title: compile(option.label),
+            key: option.label,
+            children: option.children
+              .filter((child) => ['m2o'].includes(child.name))
+              .map((child) => {
+                return {
+                  label: compile(child.title),
+                  title: compile(child.title),
+                  key: child.name,
+                  dataTargetScope: child.targetScope,
+                };
+              }),
+          };
+        }
+        return {
+          type: 'group',
+          label: compile(option.label),
+          title: compile(option.label),
+          key: option.label,
+          children: option?.children
+            .filter((child) => !['o2o', 'subTable', 'linkTo'].includes(child.name))
+            .map((child) => {
+              return {
+                label: compile(child.title),
+                title: compile(child.title),
+                key: child.name,
+                dataTargetScope: child.targetScope,
+              };
+            }),
+        };
+      })
+      .filter((v) => v?.children?.length);
+  }, [getFieldOptions]);
+  const menu = useMemo<MenuProps>(() => {
+    return {
+      style: {
+        maxHeight: '60vh',
+        overflow: 'auto',
+      },
+      onClick: (e) => {
+        //@ts-ignore
+        const targetScope = e.item.props['data-targetScope'];
+        targetScope && setTargetScope(targetScope);
+        const schema = getSchema(getInterface(e.key), record, compile);
+        if (schema) {
+          setSchema(schema);
+          setVisible(true);
+        }
+      },
+      items,
+    };
+  }, [getInterface, items, record]);
+  const scopeKeyOptions = useMemo(() => {
+    return fields
+      .filter((v) => {
+        return ['string', 'bigInt', 'integer'].includes(v.type);
+      })
+      .map((k) => {
+        return {
+          value: k.name,
+          label: compile(k.uiSchema?.title),
+        };
+      });
+  }, [fields?.length]);
   return (
-    <RecordProvider record={record}>
-      <ActionContext.Provider value={{ visible, setVisible }}>
-        <Dropdown
-          getPopupContainer={getContainer}
-          trigger={trigger}
-          align={align}
-          overlay={
-            <Menu
-              style={{
-                maxHeight: '60vh',
-                overflow: 'auto',
-              }}
-              onClick={(e) => {
-                //@ts-ignore
-                const targetScope = e.item.props['data-targetScope'];
-                targetScope && setTargetScope(targetScope);
-                const schema = getSchema(getInterface(e.key), record, compile);
-                if (schema) {
-                  setSchema(schema);
-                  setVisible(true);
-                }
-              }}
-            >
-              {getFieldOptions().map((option) => {
-                return (
-                  option.children.length > 0 && (
-                    <Menu.ItemGroup key={option.label} title={compile(option.label)}>
-                      {option.children
-                        .filter((child) => !['o2o', 'subTable'].includes(child.name))
-                        .map((child) => {
-                          return (
-                            <Menu.Item key={child.name} data-targetScope={child.targetScope}>
-                              {compile(child.title)}
-                            </Menu.Item>
-                          );
-                        })}
-                    </Menu.ItemGroup>
-                  )
-                );
-              })}
-            </Menu>
-          }
-        >
-          {children || (
-            <Button icon={<PlusOutlined />} type={'primary'}>
-              {t('Add field')}
-            </Button>
-          )}
-        </Dropdown>
-        <SchemaComponent
-          schema={schema}
-          components={{ ...components, ArrayTable }}
-          scope={{
-            getContainer,
-            useCancelAction,
-            createOnly: true,
-            isOverride: false,
-            override: false,
-            useCreateCollectionField,
-            record,
-            showReverseFieldConfig: true,
-            targetScope,
-            ...scope,
-          }}
-        />
-      </ActionContext.Provider>
-    </RecordProvider>
+    record.template !== 'sql' && (
+      <RecordProvider record={record}>
+        <ActionContextProvider value={{ visible, setVisible }}>
+          <Dropdown getPopupContainer={getContainer} trigger={trigger} align={align} menu={menu}>
+            {children || (
+              <Button icon={<PlusOutlined />} type={'primary'}>
+                {t('Add field')}
+              </Button>
+            )}
+          </Dropdown>
+          <SchemaComponent
+            schema={schema}
+            distributed={false}
+            components={{ ...components, ArrayTable }}
+            scope={{
+              getContainer,
+              useCancelAction,
+              createOnly: true,
+              isOverride: false,
+              override: false,
+              useCreateCollectionField,
+              record,
+              showReverseFieldConfig: true,
+              targetScope,
+              collections: currentCollections,
+              isDialect,
+              disabledJSONB: false,
+              scopeKeyOptions,
+              createMainOnly: true,
+              editMainOnly: true,
+              ...scope,
+            }}
+          />
+        </ActionContextProvider>
+      </RecordProvider>
+    )
   );
 };

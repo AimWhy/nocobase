@@ -1,17 +1,18 @@
-import _ from 'lodash';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
 
-import {
-  DataType,
-  ModelAttributeColumnOptions,
-  ModelIndexesOptions,
-  QueryInterfaceOptions,
-  SyncOptions,
-  Transactionable
-} from 'sequelize';
+import _ from 'lodash';
+import { DataType, ModelAttributeColumnOptions, ModelIndexesOptions, SyncOptions, Transactionable } from 'sequelize';
 import { Collection } from '../collection';
 import { Database } from '../database';
-import { InheritedCollection } from '../inherited-collection';
 import { ModelEventTypes } from '../types';
+import { snakeCase } from '../utils';
 
 export interface FieldContext {
   database: Database;
@@ -21,6 +22,7 @@ export interface FieldContext {
 export interface BaseFieldOptions {
   name?: string;
   hidden?: boolean;
+  translation?: boolean;
 
   [key: string]: any;
 }
@@ -39,9 +41,9 @@ export abstract class Field {
   [key: string]: any;
 
   constructor(options?: any, context?: FieldContext) {
-    this.context = context;
-    this.database = context.database;
-    this.collection = context.collection;
+    this.context = context as any;
+    this.database = this.context.database;
+    this.collection = this.context.collection;
     this.options = options || {};
     this.init();
   }
@@ -54,7 +56,11 @@ export abstract class Field {
     return this.options.type;
   }
 
-  abstract get dataType();
+  abstract get dataType(): any;
+
+  isRelationField() {
+    return false;
+  }
 
   async sync(syncOptions: SyncOptions) {
     await this.collection.sync({
@@ -89,63 +95,16 @@ export abstract class Field {
     return this.collection.removeField(this.name);
   }
 
-  async removeFromDb(options?: QueryInterfaceOptions) {
-    const attribute = this.collection.model.rawAttributes[this.name];
-
-    if (!attribute) {
-      this.remove();
-      // console.log('field is not attribute');
-      return;
+  columnName() {
+    if (this.options.field) {
+      return this.options.field;
     }
 
-    if (this.collection.isInherited() && (<InheritedCollection>this.collection).parentFields().has(this.name)) {
-      return;
+    if (this.database.options.underscored) {
+      return snakeCase(this.name);
     }
 
-    if ((this.collection.model as any)._virtualAttributes.has(this.name)) {
-      this.remove();
-      // console.log('field is virtual attribute');
-      return;
-    }
-    if (this.collection.model.primaryKeyAttributes.includes(this.name)) {
-      // 主键不能删除
-      return;
-    }
-    if (this.collection.model.options.timestamps !== false) {
-      // timestamps 相关字段不删除
-      if (['createdAt', 'updatedAt', 'deletedAt'].includes(this.name)) {
-        return;
-      }
-    }
-    // 排序字段通过 sortable 控制
-    const sortable = this.collection.options.sortable;
-    if (sortable) {
-      let sortField: string;
-      if (sortable === true) {
-        sortField = 'sort';
-      } else if (typeof sortable === 'string') {
-        sortField = sortable;
-      } else if (sortable.name) {
-        sortField = sortable.name || 'sort';
-      }
-      if (this.name === sortField) {
-        return;
-      }
-    }
-    if (this.options.field && this.name !== this.options.field) {
-      // field 指向的是真实的字段名，如果与 name 不一样，说明字段只是引用
-      this.remove();
-      return;
-    }
-    if (
-      await this.existsInDb({
-        transaction: options?.transaction,
-      })
-    ) {
-      const queryInterface = this.database.sequelize.getQueryInterface();
-      await queryInterface.removeColumn(this.collection.model.tableName, this.name, options);
-    }
-    this.remove();
+    return this.name;
   }
 
   async existsInDb(options?: Transactionable) {
@@ -154,18 +113,24 @@ export abstract class Field {
     };
     let sql;
     if (this.database.sequelize.getDialect() === 'sqlite') {
-      sql = `SELECT * from pragma_table_info('${this.collection.model.tableName}') WHERE name = '${this.name}'`;
-    } else if (this.database.inDialect('mysql')) {
+      sql = `SELECT *
+             from pragma_table_info('${this.collection.model.tableName}')
+             WHERE name = '${this.columnName()}'`;
+    } else if (this.database.inDialect('mysql', 'mariadb')) {
       sql = `
         select column_name
         from INFORMATION_SCHEMA.COLUMNS
-        where TABLE_SCHEMA='${this.database.options.database}' AND TABLE_NAME='${this.collection.model.tableName}' AND column_name='${this.name}'
+        where TABLE_SCHEMA = '${this.database.options.database}'
+          AND TABLE_NAME = '${this.collection.model.tableName}'
+          AND column_name = '${this.columnName()}'
       `;
     } else {
       sql = `
         select column_name
         from INFORMATION_SCHEMA.COLUMNS
-        where TABLE_NAME='${this.collection.model.tableName}' AND column_name='${this.name}'
+        where TABLE_NAME = '${this.collection.model.tableName}'
+          AND column_name = '${this.columnName()}'
+          AND table_schema = '${this.collection.collectionSchema() || 'public'}'
       `;
     }
     const [rows] = await this.database.sequelize.query(sql, opts);
@@ -179,6 +144,7 @@ export abstract class Field {
   bind() {
     const { model } = this.context.collection;
     model.rawAttributes[this.name] = this.toSequelize();
+
     // @ts-ignore
     model.refreshAttributes();
     if (this.options.index) {
@@ -188,6 +154,9 @@ export abstract class Field {
 
   unbind() {
     const { model } = this.context.collection;
+
+    delete model.prototype[this.name];
+
     model.removeAttribute(this.name);
     if (this.options.index || this.options.unique) {
       this.context.collection.removeIndex([this.name]);
@@ -196,14 +165,19 @@ export abstract class Field {
 
   toSequelize(): any {
     const opts = _.omit(this.options, ['name']);
+
     if (this.dataType) {
-      Object.assign(opts, { type: this.dataType });
+      // @ts-ignore
+      Object.assign(opts, { type: this.database.sequelize.normalizeDataType(this.dataType) });
     }
+
+    Object.assign(opts, this.additionalSequelizeOptions());
+
     return opts;
   }
 
-  isSqlite() {
-    return this.database.sequelize.getDialect() === 'sqlite';
+  additionalSequelizeOptions() {
+    return {};
   }
 
   typeToString() {

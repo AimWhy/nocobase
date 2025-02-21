@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { Collection } from '../collection';
 import { Database } from '../database';
 import { OptionsParser } from '../options-parser';
@@ -12,7 +21,7 @@ describe('option parser', () => {
 
   beforeEach(async () => {
     db = mockDatabase();
-
+    await db.clean({ drop: true });
     User = db.collection<{ id: number; name: string }, { name: string }>({
       name: 'users',
       fields: [
@@ -61,7 +70,7 @@ describe('option parser', () => {
   });
 
   test('fields with association', () => {
-    let options: any = {
+    const options: any = {
       fields: ['id', 'name', 'tags.id', 'tags.name'],
     };
 
@@ -71,19 +80,20 @@ describe('option parser', () => {
 
     const params = parser.toSequelizeParams();
 
-    expect(params).toEqual({
+    expect(params).toMatchObject({
       attributes: ['id', 'name'],
       include: [
         {
           association: 'tags',
           attributes: ['id', 'name'],
+          options: {},
         },
       ],
     });
   });
 
   test('with sort option', () => {
-    if (db.inDialect('mysql'))  {
+    if (db.inDialect('mysql', 'mariadb')) {
       expect(1).toBe(1);
       return;
     }
@@ -112,80 +122,130 @@ describe('option parser', () => {
     ]);
   });
 
-  test('option parser with fields option', async () => {
-    let options: any = {
-      fields: ['id', 'posts'],
-    };
-    // 转换为 attributes: ['id'], include: [{association: 'posts'}]
-    let parser = new OptionsParser(options, {
-      collection: User,
+  describe('options parser with fields option', () => {
+    it('should handle field and association', () => {
+      const options: any = {
+        fields: ['id', 'posts'],
+      };
+
+      // 转换为 attributes: ['id'], include: [{association: 'posts'}]
+      const parser = new OptionsParser(options, {
+        collection: User,
+      });
+
+      const params = parser.toSequelizeParams();
+
+      console.log(params);
+      expect(params['attributes']).toContain('id');
+      expect(params['include'][0]['association']).toEqual('posts');
     });
-    let params = parser.toSequelizeParams();
 
-    expect(params['attributes']).toContain('id');
-    expect(params['include'][0]['association']).toEqual('posts');
+    it('should support append with options', () => {
+      const options = {
+        appends: ['posts(recursively=true)'],
+      };
 
-    // only appends
-    options = {
-      appends: ['posts'],
-    };
+      const parser = new OptionsParser(options, {
+        collection: User,
+      });
 
-    parser = new OptionsParser(options, {
-      collection: User,
+      const { include } = parser.toSequelizeParams();
+
+      expect(include[0].association).toEqual('posts');
+      expect(include[0].association);
+      expect(include[0].options.recursively).toBeTruthy();
     });
-    params = parser.toSequelizeParams();
-    expect(params['attributes']['include']).toEqual([]);
-    expect(params['include'][0]['association']).toEqual('posts');
 
-    // fields with association field
-    options = {
-      fields: ['id', 'posts.title'],
-    };
+    it('should handle field with association', () => {
+      const options = {
+        appends: ['posts'],
+      };
 
-    parser = new OptionsParser(options, {
-      collection: User,
+      const parser = new OptionsParser(options, {
+        collection: User,
+      });
+      const params = parser.toSequelizeParams();
+
+      expect(params['attributes']['include']).toEqual([]);
+      expect(params['include'][0]['association']).toEqual('posts');
     });
-    params = parser.toSequelizeParams();
-    expect(params['attributes']).toContain('id');
-    expect(params['include'][0]['association']).toEqual('posts');
-    expect(params['include'][0]['attributes']).toContain('title');
 
-    // fields with nested field
-    options = {
-      fields: ['id', 'posts', 'posts.comments.content'],
-    };
+    it('should handle field with association field', () => {
+      // fields with association field
+      const options = {
+        fields: ['id', 'posts.title'],
+      };
 
-    parser = new OptionsParser(options, {
-      collection: User,
+      const parser = new OptionsParser(options, {
+        collection: User,
+      });
+
+      const params = parser.toSequelizeParams();
+      expect(params['attributes']).toContain('id');
+      expect(params['include'][0]['association']).toEqual('posts');
+      expect(params['include'][0]['attributes']).toContain('title');
     });
-    params = parser.toSequelizeParams();
-    expect(params['attributes']).toContain('id');
-    expect(params['include'][0]['association']).toEqual('posts');
-    expect(params['include'][0]['attributes']).toEqual({ include: [] });
-    expect(params['include'][0]['include'][0]['association']).toEqual('comments');
 
-    // fields with expect
-    options = {
-      except: ['id'],
-    };
-    parser = new OptionsParser(options, {
-      collection: User,
+    it('should handle nested fields option', () => {
+      const options = {
+        fields: ['posts', 'posts.title'],
+      };
+
+      const parser = new OptionsParser(options, {
+        collection: User,
+      });
+
+      const params = parser.toSequelizeParams();
+      const postAssociationParams = params['include'][0];
+      expect(postAssociationParams['attributes']).toEqual({ include: [] });
     });
-    params = parser.toSequelizeParams();
-    expect(params['attributes']['exclude']).toContain('id');
 
-    // expect with association
-    options = {
-      fields: ['posts'],
-      except: ['posts.id'],
-    };
+    it('should handle fields with association & association field', () => {
+      // fields with nested field
+      const options = {
+        fields: ['id', 'posts', 'posts.comments.content'],
+      };
 
-    parser = new OptionsParser(options, {
-      collection: User,
+      const parser = new OptionsParser(options, {
+        collection: User,
+      });
+
+      const params = parser.toSequelizeParams();
+      const postAssociationParams = params['include'][0];
+
+      expect(params['attributes']).toContain('id');
+      expect(postAssociationParams['association']).toEqual('posts');
+      expect(postAssociationParams['attributes']).toEqual({ include: [] });
+      expect(postAssociationParams['include'][0]['association']).toEqual('comments');
     });
-    params = parser.toSequelizeParams();
 
-    expect(params['include'][0]['attributes']['exclude']).toContain('id');
+    it('should handle except option', () => {
+      // fields with expect
+      const options = {
+        except: ['id'],
+      };
+      const parser = new OptionsParser(options, {
+        collection: User,
+      });
+
+      const params = parser.toSequelizeParams();
+      expect(params['attributes']['exclude']).toContain('id');
+    });
+
+    it('should handle fields with except option', () => {
+      // expect with association
+      const options = {
+        fields: ['posts'],
+        except: ['posts.id'],
+      };
+
+      const parser = new OptionsParser(options, {
+        collection: User,
+      });
+      const params = parser.toSequelizeParams();
+
+      expect(params['include'][0]['attributes']['exclude']).toContain('id');
+    });
   });
 
   test('option parser with multiple association', () => {

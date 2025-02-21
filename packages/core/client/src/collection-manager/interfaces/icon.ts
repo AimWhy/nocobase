@@ -1,23 +1,31 @@
-import { defaultProps } from './properties';
-import { IField } from './types';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
 
-export const icon: IField = {
-  name: 'icon',
-  type: 'object',
-  group: 'basic',
-  order: 8,
-  title: '{{t("Icon")}}',
-  default: {
+import { CollectionFieldInterface } from '../../data-source/collection-field-interface/CollectionFieldInterface';
+import { defaultProps } from './properties';
+
+export class IconFieldInterface extends CollectionFieldInterface {
+  name = 'icon';
+  type = 'object';
+  group = 'basic';
+  order = 10;
+  title = '{{t("Icon")}}';
+  default = {
     type: 'string',
-    // name,
     uiSchema: {
       type: 'string',
-      // title,
       'x-component': 'IconPicker',
     },
-  },
-  hasDefaultValue: true,
-  properties: {
+  };
+  availableTypes = ['string'];
+  hasDefaultValue = true;
+  properties = {
     ...defaultProps,
-  },
-};
+  };
+}

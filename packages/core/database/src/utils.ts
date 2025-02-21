@@ -1,66 +1,16 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import crypto from 'crypto';
+import Database from './database';
 import { IdentifierError } from './errors/identifier-error';
-import { Model } from './model';
-
-type HandleAppendsQueryOptions = {
-  templateModel: any;
-  queryPromises: Array<any>;
-};
-
-export async function handleAppendsQuery(options: HandleAppendsQueryOptions) {
-  const { templateModel, queryPromises } = options;
-
-  if (!templateModel) {
-    return [];
-  }
-
-  const primaryKey = templateModel.constructor.primaryKeyAttribute;
-
-  const results = await Promise.all(queryPromises);
-
-  let rows: Array<Model>;
-
-  for (const appendedResult of results) {
-    if (!rows) {
-      rows = appendedResult.rows;
-
-      if (rows.length == 0) {
-        return [];
-      }
-
-      const modelOptions = templateModel['_options'];
-      for (const row of rows) {
-        row['_options'] = {
-          ...row['_options'],
-          include: modelOptions['include'],
-          includeNames: modelOptions['includeNames'],
-          includeMap: modelOptions['includeMap'],
-        };
-      }
-      continue;
-    }
-
-    for (let i = 0; i < appendedResult.rows.length; i++) {
-      const appendingRow = appendedResult.rows[i];
-      const key = appendedResult.include.association;
-      const val = appendingRow.get(key);
-
-      const rowKey = appendingRow.get(primaryKey);
-
-      const targetIndex = rows.findIndex((row) => row.get(primaryKey) === rowKey);
-
-      if (targetIndex === -1) {
-        throw new Error('target row not found');
-      }
-
-      rows[targetIndex].set(key, val, {
-        raw: true,
-      });
-    }
-  }
-
-  return rows;
-}
+import lodash from 'lodash';
 
 export function md5(value: string) {
   return crypto.createHash('md5').update(value).digest('hex');
@@ -72,4 +22,109 @@ export function checkIdentifier(value: string) {
   if (value.length > MAX_IDENTIFIER_LENGTH) {
     throw new IdentifierError(`Identifier ${value} is too long`);
   }
+}
+
+export function getTableName(collectionName: string, options) {
+  return options.underscored ? snakeCase(collectionName) : collectionName;
+}
+
+export function snakeCase(name: string) {
+  return require('sequelize').Utils.underscore(name);
+}
+
+function patchShowConstraintsQuery(queryGenerator, db) {
+  queryGenerator.showConstraintsQuery = (tableName, constraintName) => {
+    const lines = [
+      'SELECT constraint_catalog AS "constraintCatalog",',
+      'constraint_schema AS "constraintSchema",',
+      'constraint_name AS "constraintName",',
+      'table_catalog AS "tableCatalog",',
+      'table_schema AS "tableSchema",',
+      'table_name AS "tableName",',
+      'constraint_type AS "constraintType",',
+      'is_deferrable AS "isDeferrable",',
+      'initially_deferred AS "initiallyDeferred"',
+      'from INFORMATION_SCHEMA.table_constraints',
+      `WHERE table_name='${lodash.isPlainObject(tableName) ? tableName.tableName : tableName}'`,
+    ];
+
+    if (constraintName) {
+      lines.push(`AND constraint_name='${constraintName}'`);
+    }
+
+    if (lodash.isPlainObject(tableName) && tableName.schema) {
+      lines.push(`AND table_schema='${tableName.schema}'`);
+    }
+
+    return lines.join(' ');
+  };
+}
+
+function patchDescribeTableQuery(queryGenerator) {
+  const describeTableQuery = function (tableName, schema) {
+    schema = schema || this.options.schema || 'public';
+
+    return (
+      'SELECT ' +
+      'pk.constraint_type as "Constraint",' +
+      'c.column_name as "Field", ' +
+      'c.column_default as "Default",' +
+      'c.is_nullable as "Null", ' +
+      "(CASE WHEN c.udt_name = 'hstore' THEN c.udt_name ELSE c.data_type END) || (CASE WHEN c.character_maximum_length IS NOT NULL THEN '(' || c.character_maximum_length || ')' ELSE '' END) as \"Type\", " +
+      '(SELECT array_agg(e.enumlabel) FROM pg_catalog.pg_type t JOIN pg_catalog.pg_enum e ON t.oid=e.enumtypid WHERE t.typname=c.udt_name) AS "special", ' +
+      '(SELECT pgd.description FROM pg_catalog.pg_statio_all_tables AS st INNER JOIN pg_catalog.pg_description pgd on (pgd.objoid=st.relid) WHERE c.ordinal_position=pgd.objsubid AND c.table_name=st.relname AND st.schemaname = c.table_schema) AS "Comment" ' +
+      'FROM information_schema.columns c ' +
+      'LEFT JOIN (SELECT tc.table_schema, tc.table_name, ' +
+      'cu.column_name, tc.constraint_type ' +
+      'FROM information_schema.TABLE_CONSTRAINTS tc ' +
+      'JOIN information_schema.KEY_COLUMN_USAGE  cu ' +
+      'ON tc.table_schema=cu.table_schema and tc.table_name=cu.table_name ' +
+      'and tc.constraint_name=cu.constraint_name ' +
+      "and tc.constraint_type='PRIMARY KEY') pk " +
+      'ON pk.table_schema=c.table_schema ' +
+      'AND pk.table_name=c.table_name ' +
+      'AND pk.column_name=c.column_name ' +
+      `WHERE c.table_name = ${this.escape(tableName)} AND c.table_schema = ${this.escape(schema)}`
+    );
+  };
+
+  queryGenerator.describeTableQuery = describeTableQuery.bind(queryGenerator);
+}
+
+export function patchSequelizeQueryInterface(db: Database) {
+  if (db.inDialect('postgres')) {
+    //@ts-ignore
+    const queryGenerator = db.sequelize.dialect.queryGenerator;
+    patchShowConstraintsQuery(queryGenerator, db);
+    patchDescribeTableQuery(queryGenerator);
+  }
+}
+
+export function percent2float(value: string) {
+  if (!value.endsWith('%')) {
+    return NaN;
+  }
+  const val = value.substring(0, value.length - 1);
+  if (isNaN(+val)) {
+    return NaN;
+  }
+  const index = value.indexOf('.');
+  if (index === -1) {
+    return parseFloat(value) / 100;
+  }
+  const repeat = value.length - index - 2;
+  const v = parseInt('1' + '0'.repeat(repeat));
+  return (parseFloat(value) * v) / (100 * v);
+}
+
+export function isUndefinedOrNull(value: any) {
+  return typeof value === 'undefined' || value === null;
+}
+
+export function isStringOrNumber(value: any) {
+  return typeof value === 'string' || typeof value === 'number';
+}
+
+export function getKeysByPrefix(keys: string[], prefix: string) {
+  return keys.filter((key) => key.startsWith(`${prefix}.`)).map((key) => key.substring(prefix.length + 1));
 }

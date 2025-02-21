@@ -1,7 +1,7 @@
 /**
  * title: Upload
  */
-import { FormItem } from '@formily/antd';
+import { FormItem } from '@formily/antd-v5';
 import { APIClientProvider, SchemaComponent, SchemaComponentProvider, Upload } from '@nocobase/client';
 import React from 'react';
 import apiClient from './apiClient';
@@ -58,7 +58,7 @@ const schema = {
       'x-decorator': 'FormItem',
       'x-component': 'Upload.Attachment',
       'x-component-props': {
-        action: 'attachments:upload',
+        action: 'attachments:create',
         multiple: true,
       },
       'x-reactions': [
@@ -102,6 +102,24 @@ const schema = {
       },
     },
   },
+};
+
+const collection = {
+  name: 'posts',
+  fields: [
+    {
+      name: 'input',
+      type: 'attachment',
+    },
+    {
+      name: 'read',
+      type: 'attachment',
+    },
+    {
+      name: 'read2',
+      type: 'attachment',
+    },
+  ],
 };
 
 export default () => {

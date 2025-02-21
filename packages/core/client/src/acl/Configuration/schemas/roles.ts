@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { ISchema } from '@formily/react';
 import { uid } from '@formily/shared';
 import pick from 'lodash/pick';
@@ -5,7 +14,6 @@ import { useEffect } from 'react';
 import { useRequest } from '../../../api-client';
 import { useRecord } from '../../../record-provider';
 import { useActionContext } from '../../../schema-component';
-import { roleCollectionsSchema } from './roleCollections';
 
 const collection = {
   name: 'roles',
@@ -69,7 +77,7 @@ export const roleSchema: ISchema = {
           },
         },
       },
-      'x-component': 'CollectionProvider',
+      'x-component': 'CollectionProvider_deprecated',
       'x-component-props': {
         collection,
       },
@@ -257,15 +265,15 @@ export const roleSchema: ISchema = {
                                     },
                                   },
                                 },
-                                tab2: {
-                                  type: 'void',
-                                  title: '{{t("Action permissions")}}',
-                                  'x-component': 'Tabs.TabPane',
-                                  'x-component-props': {},
-                                  properties: {
-                                    roleCollectionsSchema,
-                                  },
-                                },
+                                // tab2: {
+                                //   type: 'void',
+                                //   title: '{{t("Action permissions")}}',
+                                //   'x-component': 'Tabs.TabPane',
+                                //   'x-component-props': {},
+                                //   properties: {
+                                //     roleCollectionsSchema,
+                                //   },
+                                // },
                                 tab3: {
                                   type: 'void',
                                   title: '{{t("Menu permissions")}}',

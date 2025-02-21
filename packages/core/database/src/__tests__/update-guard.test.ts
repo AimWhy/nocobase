@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { Collection } from '../collection';
 import { mockDatabase } from './index';
 import { UpdateGuard } from '../update-guard';
@@ -9,9 +18,11 @@ describe('update-guard', () => {
   let User: Collection;
   let Post: Collection;
   let Comment: Collection;
+  let Tag: Collection;
 
   beforeEach(async () => {
     db = mockDatabase();
+    await db.clean({ drop: true });
 
     User = db.collection({
       name: 'users',
@@ -19,6 +30,16 @@ describe('update-guard', () => {
         { type: 'string', name: 'name' },
         { type: 'integer', name: 'age' },
         { type: 'hasMany', name: 'posts' },
+        {
+          type: 'belongsToMany',
+          name: 'tags',
+          target: 'tags',
+          through: 'users_tags',
+          sourceKey: 'id',
+          foreignKey: 'userId',
+          otherKey: 'tagName',
+          targetKey: 'name',
+        },
       ],
     });
 
@@ -47,6 +68,11 @@ describe('update-guard', () => {
       ],
     });
 
+    Tag = db.collection({
+      name: 'tags',
+      fields: [{ type: 'string', name: 'name', unique: true }],
+    });
+
     await db.sync({
       force: true,
       alter: { drop: false },
@@ -54,22 +80,49 @@ describe('update-guard', () => {
 
     const repository = User.repository;
 
-    await repository.createMany({
-      records: [
+    await repository.create({
+      values: [
         {
           name: 'u1',
           age: 10,
           posts: [{ title: 'u1t1', comments: [{ content: 'u1t1c1' }] }],
+          tags: [
+            {
+              name: 't1',
+            },
+            {
+              name: 't2',
+            },
+          ],
         },
         {
           name: 'u2',
           age: 20,
           posts: [{ title: 'u2t1', comments: [{ content: 'u2t1c1' }] }],
+          tags: [
+            {
+              name: 't1',
+            },
+            {
+              name: 't2',
+            },
+          ],
         },
         {
           name: 'u3',
           age: 30,
           posts: [{ title: 'u3t1', comments: [{ content: 'u3t1c1' }] }],
+          tags: [
+            {
+              name: 't1',
+            },
+            {
+              name: 't2',
+            },
+            {
+              name: 't3',
+            },
+          ],
         },
       ],
     });
@@ -77,6 +130,26 @@ describe('update-guard', () => {
 
   afterEach(async () => {
     await db.close();
+  });
+
+  test('association values', async () => {
+    const values = {
+      name: 'u1',
+      tags: [
+        {
+          name: 't1',
+        },
+        {
+          name: 't2',
+        },
+      ],
+    };
+
+    const guard = new UpdateGuard();
+    guard.setModel(User.model);
+
+    const sanitized = guard.sanitize(values);
+    console.log(sanitized);
   });
 
   test('white list', () => {
@@ -106,6 +179,19 @@ describe('update-guard', () => {
     expect(guard.sanitize(values)).toEqual({
       age: 30,
     });
+  });
+
+  test('association with null array', () => {
+    const values = {
+      name: 'u1',
+      posts: [null],
+    };
+
+    const guard = new UpdateGuard();
+    guard.setModel(User.model);
+    const sanitized = guard.sanitize(values);
+
+    expect(sanitized).toEqual({ name: 'u1', posts: [null] });
   });
 
   test('association black list', () => {
@@ -338,8 +424,9 @@ describe('update-guard', () => {
 });
 
 describe('One2One Association', () => {
-  test('associationKeysToBeUpdate hasOne & BelongsTo', () => {
+  test('associationKeysToBeUpdate hasOne & BelongsTo', async () => {
     const db = mockDatabase();
+    await db.clean({ drop: true });
     const Post = db.collection({
       name: 'posts',
       fields: [{ type: 'belongsTo', name: 'user', targetKey: 'uid' }],
@@ -357,6 +444,7 @@ describe('One2One Association', () => {
         uid: 1,
         name: '123',
       },
+      userId: 1,
     };
 
     const guard = new UpdateGuard();
@@ -368,6 +456,7 @@ describe('One2One Association', () => {
       user: {
         uid: 1,
       },
+      userId: 1,
     });
 
     guard.setAssociationKeysToBeUpdate(['user']);

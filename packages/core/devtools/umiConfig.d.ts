@@ -1,4 +1,5 @@
 export declare function getUmiConfig(): {
+  alias: Record<string, string>;
   define: {
     'process.env.API_BASE_URL': string;
   };
@@ -19,3 +20,9 @@ export declare function getUmiConfig(): {
 };
 
 export declare function resolveNocobasePackagesAlias(config: any): {};
+export declare class IndexGenerator {
+  constructor(outputPath: string, pluginsPath: string[]): void;
+  generate(): void;
+};
+
+export declare function generatePlugins(): {}

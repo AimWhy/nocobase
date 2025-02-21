@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { mockDatabase } from '../';
 import { Database } from '../../database';
 import { Model } from '../../model';
@@ -7,6 +16,7 @@ describe('hidden field options', () => {
 
   beforeEach(async () => {
     db = mockDatabase();
+    await db.clean({ drop: true });
   });
 
   afterEach(async () => {
@@ -234,10 +244,12 @@ describe('hidden field options', () => {
     await repo.create({
       values: {
         title: 'post1',
-        users: [{
-          name: 'abc',
-          password: '123',
-        }],
+        users: [
+          {
+            name: 'abc',
+            password: '123',
+          },
+        ],
       },
     });
     const instance = await repo.findOne({
@@ -284,10 +296,12 @@ describe('hidden field options', () => {
     await repo.create({
       values: {
         title: 'post1',
-        users: [{
-          name: 'abc',
-          password: '123',
-        }],
+        users: [
+          {
+            name: 'abc',
+            password: '123',
+          },
+        ],
       },
     });
     const instance = await repo.findOne({

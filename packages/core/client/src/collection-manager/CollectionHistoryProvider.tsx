@@ -1,7 +1,15 @@
-import { Spin } from 'antd';
-import React, { createContext, useContext, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
-import { APIClientContext, useRequest } from '../api-client';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import React, { createContext, useCallback, useContext, useMemo } from 'react';
+import { useAPIClient, useRequest } from '../api-client';
+import { useIsAdminPage } from '../application/CustomRouterContextProvider';
 
 export interface CollectionHistoryContextValue {
   historyCollections: any[];
@@ -12,66 +20,53 @@ const CollectionHistoryContext = createContext<CollectionHistoryContextValue>({
   historyCollections: [],
   refreshCH: () => undefined,
 });
+CollectionHistoryContext.displayName = 'CollectionHistoryContext';
+
+const options = {
+  resource: 'collectionsHistory',
+  action: 'list',
+  params: {
+    paginate: false,
+    appends: ['fields'],
+    filter: {
+      // inherit: false,
+    },
+    sort: ['sort'],
+  },
+};
 
 export const CollectionHistoryProvider: React.FC = (props) => {
-  const api = useContext(APIClientContext);
-
-  const options = {
-    resource: 'collectionsHistory',
-    action: 'list',
-    params: {
-      paginate: false,
-      appends: ['fields', 'fields.uiSchema'],
-      filter: {
-        // inherit: false,
-      },
-      sort: ['sort'],
-    },
-  };
-
-  const location = useLocation();
-
-  // console.log('location', location);
-
-  const service = useRequest(options, {
-    manual: true,
-  });
-
-  const isAdminPage = location.pathname.startsWith('/admin');
+  const api = useAPIClient();
+  const isAdminPage = useIsAdminPage();
   const token = api.auth.getToken() || '';
 
-  useEffect(() => {
-    if (isAdminPage && token) {
-      service.run();
-    }
-  }, [isAdminPage, token]);
+  const service = useRequest<{
+    data: any;
+  }>(options, {
+    refreshDeps: [isAdminPage, token],
+    ready: !!(isAdminPage && token),
+  });
 
   // 刷新 collecionHistory
-  const refreshCH = async () => {
+  const refreshCH = useCallback(async () => {
     const { data } = await api.request(options);
     service.mutate(data);
     return data?.data || [];
-  };
+  }, [service]);
 
-  if (service.loading) {
-    return <Spin />;
-  }
+  const value = useMemo(() => {
+    return {
+      historyCollections: service.data?.data,
+      refreshCH,
+    };
+  }, [refreshCH, service.data?.data]);
 
-  return (
-    <CollectionHistoryContext.Provider
-      value={{
-        historyCollections: service.data?.data,
-        refreshCH,
-      }}
-    >
-      {props.children}
-    </CollectionHistoryContext.Provider>
-  );
+  return <CollectionHistoryContext.Provider value={value}>{props.children}</CollectionHistoryContext.Provider>;
 };
 
 export const useHistoryCollectionsByNames = (collectionNames: string[]) => {
   const { historyCollections } = useContext(CollectionHistoryContext);
-  return historyCollections.filter((i) => collectionNames.includes(i.name));
+  return historyCollections?.filter((i) => collectionNames.includes(i.name)) || [];
 };
 
 export const useCollectionHistory = () => {

@@ -1,12 +1,14 @@
+
+
 import { ISchema, useForm } from '@formily/react';
 import {
   AntdSchemaComponentProvider,
-  SharedFilter,
+  Application,
+  Filter,
   Input,
   SchemaComponent,
   SchemaComponentProvider,
   useActionContext,
-  useRequest,
 } from '@nocobase/client';
 import React from 'react';
 
@@ -74,6 +76,21 @@ const dataSource = [
   },
 ];
 
+const defaultValue = {
+  $or: [
+    {
+      name: {
+        $ne: 'aa',
+      },
+    },
+    {
+      'tags.title': {
+        $eq: 'aaa',
+      },
+    },
+  ],
+};
+
 const schema: ISchema = {
   type: 'object',
   properties: {
@@ -99,31 +116,10 @@ const schema: ISchema = {
           properties: {
             filter: {
               type: 'object',
-              default: {
-                $or: [
-                  {
-                    name: {
-                      $ne: 'aa',
-                    },
-                  },
-                  {
-                    'tags.title': {
-                      $eq: 'aaa',
-                    },
-                  },
-                ],
-              },
+              default: defaultValue,
               'x-component': 'Filter',
               'x-component-props': {
-                useDataSource(options) {
-                  return useRequest(
-                    () =>
-                      Promise.resolve({
-                        data: dataSource,
-                      }),
-                    options,
-                  );
-                },
+                options: dataSource,
               },
             },
             footer: {
@@ -169,7 +165,7 @@ const schema: ISchema = {
   },
 };
 
-export default () => {
+const Root = () => {
   return (
     <SchemaComponentProvider>
       <AntdSchemaComponentProvider>
@@ -178,3 +174,9 @@ export default () => {
     </SchemaComponentProvider>
   );
 };
+
+const app = new Application({
+  providers: [Root],
+});
+
+export default app.getRootComponent();

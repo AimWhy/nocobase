@@ -1,30 +1,42 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 const { Command } = require('commander');
-const { run, isDev, isProd, promptForTs } = require('../util');
+const { run, isDev, isProd, promptForTs, downloadPro } = require('../util');
 
 /**
  *
  * @param {Command} cli
  */
 module.exports = (cli) => {
-  const { APP_PACKAGE_ROOT } = process.env;
+  const { APP_PACKAGE_ROOT, SERVER_TSCONFIG_PATH } = process.env;
   cli
     .allowUnknownOption()
     .option('-h, --help')
     .option('--ts-node-dev')
-    .action((options) => {
-      const { tsNodeDev } = options;
+    .action(async (options) => {
+      const cmd = process.argv.slice(2)?.[0];
+      if (cmd === 'install') {
+        await downloadPro();
+      }
       if (isDev()) {
         promptForTs();
-        run(tsNodeDev ? 'ts-node-dev' : 'ts-node', [
-          '-P',
-          './tsconfig.server.json',
+        await run('tsx', [
+          '--tsconfig',
+          SERVER_TSCONFIG_PATH,
           '-r',
           'tsconfig-paths/register',
-          `./packages/${APP_PACKAGE_ROOT}/server/src/index.ts`,
+          `${APP_PACKAGE_ROOT}/src/index.ts`,
           ...process.argv.slice(2),
         ]);
       } else if (isProd()) {
-        run('node', [`./packages/${APP_PACKAGE_ROOT}/server/lib/index.js`, ...process.argv.slice(2)]);
+        await run('node', [`${APP_PACKAGE_ROOT}/lib/index.js`, ...process.argv.slice(2)]);
       }
     });
 };

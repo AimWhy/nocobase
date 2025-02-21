@@ -1,30 +1,31 @@
-import { ActionParams } from '@nocobase/resourcer';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { Context } from '..';
-import { getRepositoryFromParams } from '../utils';
-
-export const DEFAULT_PAGE = 1;
-export const DEFAULT_PER_PAGE = 20;
-
-function pageArgsToLimitArgs(
-  page: number,
-  pageSize: number,
-): {
-  offset: number;
-  limit: number;
-} {
-  return {
-    offset: (page - 1) * pageSize,
-    limit: pageSize,
-  };
-}
+import { getRepositoryFromParams, pageArgsToLimitArgs } from '../utils';
+import { DEFAULT_PAGE, DEFAULT_PER_PAGE } from '../constants';
 
 function totalPage(total, pageSize): number {
   return Math.ceil(total / pageSize);
 }
 
-function findArgs(params: ActionParams) {
+function findArgs(ctx: Context) {
+  const params = ctx.action.params;
+
   const { fields, filter, appends, except, sort } = params;
-  return { filter, fields, appends, except, sort };
+  let { tree } = params;
+  if (tree === true || tree === 'true') {
+    tree = true;
+  } else {
+    tree = false;
+  }
+  return { tree, filter, fields, appends, except, sort };
 }
 
 async function listWithPagination(ctx: Context) {
@@ -32,25 +33,48 @@ async function listWithPagination(ctx: Context) {
 
   const repository = getRepositoryFromParams(ctx);
 
-  const [rows, count] = await repository.findAndCount({
+  const { simplePaginate } = repository.collection?.options || {};
+
+  const options = {
     context: ctx,
-    ...findArgs(ctx.action.params),
+    ...findArgs(ctx),
     ...pageArgsToLimitArgs(parseInt(String(page)), parseInt(String(pageSize))),
+  };
+
+  Object.keys(options).forEach((key) => {
+    if (options[key] === undefined) {
+      delete options[key];
+    }
   });
 
-  ctx.body = {
-    count,
-    rows,
-    page: Number(page),
-    pageSize: Number(pageSize),
-    totalPage: totalPage(count, pageSize),
-  };
+  if (simplePaginate) {
+    options.limit = options.limit + 1;
+
+    const rows = await repository.find(options);
+
+    ctx.body = {
+      rows: rows.slice(0, pageSize),
+      hasNext: rows.length > pageSize,
+      page: Number(page),
+      pageSize: Number(pageSize),
+    };
+  } else {
+    const [rows, count] = await repository.findAndCount(options);
+
+    ctx.body = {
+      count,
+      rows,
+      page: Number(page),
+      pageSize: Number(pageSize),
+      totalPage: totalPage(count, pageSize),
+    };
+  }
 }
 
 async function listWithNonPaged(ctx: Context) {
   const repository = getRepositoryFromParams(ctx);
 
-  const rows = await repository.find({ context: ctx, ...findArgs(ctx.action.params) });
+  const rows = await repository.find({ context: ctx, ...findArgs(ctx) });
 
   ctx.body = rows;
 }

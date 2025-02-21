@@ -1,39 +1,25 @@
-import { css } from '@emotion/css';
-import { observer } from '@formily/react';
-import { Tag } from 'antd';
-import React from 'react';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useCompile } from '../../../schema-component';
-import { useCollectionManager } from '../../hooks';
+import { useCollectionManager_deprecated } from '../../hooks';
+import Summary from './Summary';
 
-export const FieldSummary = observer((props: any) => {
-  const { schemaKey } = props;
-  const { getInterface } = useCollectionManager();
-  const compile = useCompile();
+export const FieldSummary = (props) => {
   const { t } = useTranslation();
-  const schema = getInterface(schemaKey);
+  const { getInterface } = useCollectionManager_deprecated();
+  const schema = useMemo(() => {
+    return getInterface(props.schemaKey);
+  }, [getInterface, props.schemaKey]);
 
-  if (!schema) return null;
+  return <Summary label={t('Field interface')} schema={schema} />;
+};
 
-  return (
-    <div
-      className={css`
-        background: #f6f6f6;
-        margin-bottom: 24px;
-        padding: 16px;
-      `}
-    >
-      <div className={css``}>{t('Field interface')}: <Tag>{compile(schema.title)}</Tag></div>
-      {schema.description ? (
-        <div
-          className={css`
-            margin-top: 8px;
-            color: rgba(0, 0, 0, 0.45);
-          `}
-        >
-          {compile(schema.description)}
-        </div>
-      ) : null}
-    </div>
-  );
-});
+FieldSummary.displayName = 'FieldSummary';

@@ -1,15 +1,33 @@
-import { ArrayItems } from '@formily/antd';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import { ArrayItems } from '@formily/antd-v5';
 import { ISchema, useField, useFieldSchema } from '@formily/react';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { useCollection, useResourceActionContext } from '../../../collection-manager';
+import { useCollection_deprecated, useResourceActionContext } from '../../../collection-manager';
 import { useCollectionFilterOptions, useSortFields } from '../../../collection-manager/action-hooks';
-import { GeneralSchemaDesigner, SchemaSettings } from '../../../schema-settings';
+import {
+  GeneralSchemaDesigner,
+  SchemaSettingsDivider,
+  SchemaSettingsModalItem,
+  SchemaSettingsRemove,
+  SchemaSettingsSelectItem,
+  SchemaSettingsSwitchItem,
+} from '../../../schema-settings';
+import { SchemaSettingsTemplate } from '../../../schema-settings/SchemaSettingsTemplate';
 import { useSchemaTemplate } from '../../../schema-templates';
+import { useBlockTemplateContext } from '../../../schema-templates/BlockTemplateProvider';
 import { useDesignable } from '../../hooks';
 
 export const TableVoidDesigner = () => {
-  const { name, title } = useCollection();
+  const { name, title } = useCollection_deprecated();
   const field = useField();
   const fieldSchema = useFieldSchema();
   const dataSource = useCollectionFilterOptions(name);
@@ -31,9 +49,10 @@ export const TableVoidDesigner = () => {
         };
   });
   const template = useSchemaTemplate();
+  const { componentNamePrefix } = useBlockTemplateContext();
   return (
     <GeneralSchemaDesigner template={template} title={title || name}>
-      <SchemaSettings.SwitchItem
+      <SchemaSettingsSwitchItem
         title={t('Enable drag and drop sorting')}
         checked={field.decoratorProps.dragSort}
         onChange={(dragSort) => {
@@ -48,7 +67,7 @@ export const TableVoidDesigner = () => {
           });
         }}
       />
-      <SchemaSettings.ModalItem
+      <SchemaSettingsModalItem
         title={'设置数据范围'}
         schema={
           {
@@ -79,7 +98,7 @@ export const TableVoidDesigner = () => {
           });
         }}
       />
-      <SchemaSettings.ModalItem
+      <SchemaSettingsModalItem
         title={t('Set default sorting rules')}
         components={{ ArrayItems }}
         schema={
@@ -107,6 +126,7 @@ export const TableVoidDesigner = () => {
                         field: {
                           type: 'string',
                           enum: sortFields,
+                          required: true,
                           'x-decorator': 'FormItem',
                           'x-component': 'Select',
                           'x-component-props': {
@@ -170,10 +190,11 @@ export const TableVoidDesigner = () => {
           ctx.run({ ...ctx.params?.[0], sort: sortArr });
         }}
       />
-      <SchemaSettings.SelectItem
+      <SchemaSettingsSelectItem
         title={'每页显示'}
         value={field.decoratorProps.request.params?.pageSize || 20}
         options={[
+          { label: '5', value: 5 },
           { label: '10', value: 10 },
           { label: '20', value: 20 },
           { label: '50', value: 50 },
@@ -194,10 +215,10 @@ export const TableVoidDesigner = () => {
           });
         }}
       />
-      <SchemaSettings.Divider />
-      <SchemaSettings.Template componentName={'Table'} collectionName={name}/>
-      <SchemaSettings.Divider />
-      <SchemaSettings.Remove
+      <SchemaSettingsDivider />
+      <SchemaSettingsTemplate componentName={`${componentNamePrefix}Table`} collectionName={name} />
+      <SchemaSettingsDivider />
+      <SchemaSettingsRemove
         removeParentsIfNoChildren
         breakRemoveOn={{
           'x-component': 'Grid',

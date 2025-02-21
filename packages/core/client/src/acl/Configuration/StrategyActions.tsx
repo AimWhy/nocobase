@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { ArrayField } from '@formily/core';
 import { connect, useField } from '@formily/react';
 import { Checkbox, Select, Table, Tag } from 'antd';
@@ -45,6 +54,7 @@ export const StrategyActions = connect((props) => {
       <Table
         size={'small'}
         pagination={false}
+        rowKey={'name'}
         columns={[
           {
             dataIndex: 'displayName',
@@ -67,6 +77,7 @@ export const StrategyActions = connect((props) => {
             render: (enabled, action) => (
               <Checkbox
                 checked={enabled}
+                aria-label={`${action.name}_checkbox`}
                 onChange={(e) => {
                   if (enabled) {
                     delete scopes[action.name];
@@ -84,6 +95,8 @@ export const StrategyActions = connect((props) => {
             render: (scope, action) =>
               !action.onNewRecord && (
                 <Select
+                  data-testid="select-data-scope"
+                  popupMatchSelectWidth={false}
                   size={'small'}
                   value={scope}
                   options={[

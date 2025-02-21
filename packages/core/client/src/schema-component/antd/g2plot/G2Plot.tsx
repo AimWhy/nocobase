@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import {
   Area,
   Bar,
@@ -33,7 +42,7 @@ import {
   Venn,
   Violin,
   Waterfall,
-  WordCloud
+  WordCloud,
 } from '@antv/g2plot';
 import { Field } from '@formily/core';
 import { observer, useField } from '@formily/react';
@@ -90,7 +99,6 @@ const plots = {
 
 export const G2PlotRenderer = forwardRef(function <O = any>(props: ReactG2PlotProps<O>, ref: any) {
   const { className, plot, config } = props;
-
   const containerRef = useRef(undefined);
   const plotRef = useRef(undefined);
 
@@ -107,7 +115,7 @@ export const G2PlotRenderer = forwardRef(function <O = any>(props: ReactG2PlotPr
       plotRef.current.update(config);
     } else {
       plotRef.current = new plot(containerRef.current, config);
-      plotRef.current.render();
+      plotRef?.current?.render();
     }
 
     syncRef(plotRef, ref);
@@ -122,57 +130,63 @@ export const G2PlotRenderer = forwardRef(function <O = any>(props: ReactG2PlotPr
 
   useEffect(() => {
     renderPlot();
-
     return () => destoryPlot();
   }, [config, plot]);
 
   return <div className={cls(['g2plot', className])} ref={containerRef} />;
 });
+G2PlotRenderer.displayName = 'G2PlotRenderer';
 
-export const G2Plot: any = observer((props: any) => {
-  const { plot, config } = props;
-  const field = useField<Field>();
-  const { t } = useTranslation();
-  const api = useAPIClient();
-  useEffect(() => {
-    field.data = field.data || {};
-    field.data.loading = true;
-    const fn = config?.data;
-    if (typeof fn === 'function') {
-      const result = fn.bind({ api })();
-      if (result?.then) {
-        result.then((data) => {
-          if (Array.isArray(data)) {
-            field.componentProps.config.data = data;
-          }
+export const G2Plot: any = observer(
+  (props: any) => {
+    const { plot, config } = props;
+    const field = useField<Field>();
+    const { t } = useTranslation();
+    const api = useAPIClient();
+    useEffect(() => {
+      field.data = field.data || {};
+      field.data.loading = true;
+      const fn = config?.data;
+      if (typeof fn === 'function') {
+        const result = fn.bind({ api })();
+        if (result?.then) {
+          result
+            .then((data) => {
+              if (Array.isArray(data)) {
+                field.componentProps.config.data = data;
+              }
+              field.data.loading = false;
+            })
+            .catch(console.error);
+        } else {
           field.data.loading = false;
-        });
+        }
       } else {
         field.data.loading = false;
       }
-    } else {
-      field.data.loading = false;
+    }, []);
+
+    if (!plot || !config) {
+      return <div style={{ opacity: 0.3 }}>{t('In configuration')}...</div>;
     }
-  }, []);
-  if (!plot || !config) {
-    return <div style={{ opacity: 0.3 }}>{t('In configuration')}...</div>;
-  }
-  if (field?.data?.loading !== false) {
-    return <Spin />;
-  }
-  return (
-    <div>
-      {field.title && <h2>{field.title}</h2>}
-      <G2PlotRenderer
-        plot={plots[plot]}
-        config={{
-          ...config,
-          data: Array.isArray(config?.data) ? config.data : [],
-        }}
-      />
-    </div>
-  );
-});
+    if (field?.data?.loading !== false) {
+      return <Spin />;
+    }
+    return (
+      <div>
+        {field.title && <h2>{field.title}</h2>}
+        <G2PlotRenderer
+          plot={plots[plot]}
+          config={{
+            ...config,
+            data: Array.isArray(config?.data) ? config.data : [],
+          }}
+        />
+      </div>
+    );
+  },
+  { displayName: 'G2Plot' },
+);
 
 G2Plot.Designer = G2PlotDesigner;
 G2Plot.plots = plots;

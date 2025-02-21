@@ -1,18 +1,32 @@
-import React from "react";
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
 
-import { InitializerWithSwitch } from "./InitializerWithSwitch";
+import { uid } from '@formily/shared';
+import React from 'react';
+import { useSchemaInitializerItem } from '../../application';
+import { InitializerWithSwitch } from './InitializerWithSwitch';
 
-export const TableActionColumnInitializer = (props) => {
+export const TableActionColumnInitializer = () => {
   const schema = {
     type: 'void',
     title: '{{ t("Actions") }}',
     'x-decorator': 'TableV2.Column.ActionBar',
     'x-component': 'TableV2.Column',
-    'x-designer': 'TableV2.ActionColumnDesigner',
-    'x-initializer': 'TableActionColumnInitializers',
+    'x-toolbar': 'TableColumnSchemaToolbar',
+    'x-initializer': 'table:configureItemActions',
+    'x-settings': 'fieldSettings:TableColumn',
+    'x-toolbar-props': {
+      initializer: 'table:configureItemActions',
+    },
     'x-action-column': 'actions',
     properties: {
-      actions: {
+      [uid()]: {
         type: 'void',
         'x-decorator': 'DndContext',
         'x-component': 'Space',
@@ -23,5 +37,6 @@ export const TableActionColumnInitializer = (props) => {
       },
     },
   };
-  return <InitializerWithSwitch {...props} schema={schema} type={'x-action-column'} />;
+  const itemConfig = useSchemaInitializerItem();
+  return <InitializerWithSwitch {...itemConfig} schema={schema} item={itemConfig} type={'x-action-column'} />;
 };

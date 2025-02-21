@@ -1,3 +1,5 @@
+
+
 import { uid } from '@formily/shared';
 import { APIClient, APIClientProvider, useAPIClient, useRequest } from '@nocobase/client';
 import { Button, Input, Space, Table } from 'antd';
@@ -24,7 +26,9 @@ mock.onGet('/users:list').reply(async () => {
 
 const ComponentA = () => {
   console.log('ComponentA');
-  const { data, loading } = useRequest(
+  const { data, loading } = useRequest<{
+    data: any;
+  }>(
     {
       url: 'users:list',
       method: 'get',

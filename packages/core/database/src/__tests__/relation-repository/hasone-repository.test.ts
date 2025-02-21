@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { Collection } from '../../collection';
 import Database from '../../database';
 import { HasOneRepository } from '../../relation-repository/hasone-repository';
@@ -54,6 +63,32 @@ describe('has one repository', () => {
     await db.sync();
   });
 
+  it('should emit event after update', async () => {
+    const user = await User.repository.create({
+      values: {
+        name: 'u1',
+        profile: {
+          avatar: 'avatar',
+        },
+      },
+    });
+
+    const fn = vi.fn();
+    db.on('profiles.afterUpdateWithAssociations', () => {
+      fn();
+    });
+
+    const UserProfileRepository = new HasOneRepository(User, 'profile', user['id']);
+
+    await UserProfileRepository.update({
+      values: {
+        avatar: 'new-avatar',
+      },
+    });
+
+    expect(fn).toHaveBeenCalledOnce();
+  });
+
   test('find with appends', async () => {
     const user = await User.repository.create({
       values: {
@@ -93,6 +128,7 @@ describe('has one repository', () => {
     });
 
     const data = profile.toJSON();
+
     expect(data['a1']).toBeDefined();
     expect(data['a2']).toBeDefined();
   });

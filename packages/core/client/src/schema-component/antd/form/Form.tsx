@@ -1,14 +1,26 @@
-import { FormLayout } from '@formily/antd';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import { FormLayout } from '@formily/antd-v5';
 import { createForm } from '@formily/core';
-import { FieldContext, FormContext, observer, RecursionField, useField, useFieldSchema } from '@formily/react';
-import { Options, Result } from 'ahooks/lib/useRequest/src/types';
+import { FieldContext, FormContext, observer, useField, useFieldSchema } from '@formily/react';
+import { Options, Result } from 'ahooks/es/useRequest/src/types';
 import { ConfigProvider, Spin } from 'antd';
 import React, { createContext, useContext, useEffect, useMemo } from 'react';
 import { useAttach, useComponent } from '../..';
 import { useRequest } from '../../../api-client';
-import { useCollection } from '../../../collection-manager';
-import { GeneralSchemaDesigner, SchemaSettings } from '../../../schema-settings';
+import { useCollection_deprecated } from '../../../collection-manager';
+import { NocoBaseRecursionField } from '../../../formily/NocoBaseRecursionField';
+import { GeneralSchemaDesigner, SchemaSettingsDivider, SchemaSettingsRemove } from '../../../schema-settings';
+import { SchemaSettingsTemplate } from '../../../schema-settings/SchemaSettingsTemplate';
 import { useSchemaTemplate } from '../../../schema-templates';
+import { useBlockTemplateContext } from '../../../schema-templates/BlockTemplateProvider';
 
 type Opts = Options<any, any> & { uid?: string };
 
@@ -28,7 +40,7 @@ const FormComponent: React.FC<FormProps> = (props) => {
     <FieldContext.Provider value={undefined}>
       <FormContext.Provider value={form}>
         <FormLayout layout={'vertical'} {...others}>
-          <RecursionField basePath={f.address} schema={fieldSchema} onlyRenderProperties />
+          <NocoBaseRecursionField basePath={f.address} schema={fieldSchema} onlyRenderProperties />
         </FormLayout>
       </FormContext.Provider>
     </FieldContext.Provider>
@@ -54,7 +66,7 @@ const FormDecorator: React.FC<FormProps> = (props) => {
           <FormLayout layout={'vertical'} {...others}>
             <FieldContext.Provider value={f}>
               <Component {...field.componentProps}>
-                <RecursionField basePath={f.address} schema={fieldSchema} onlyRenderProperties />
+                <NocoBaseRecursionField basePath={f.address} schema={fieldSchema} onlyRenderProperties />
               </Component>
             </FieldContext.Provider>
             {/* <FieldContext.Provider value={f}>{children}</FieldContext.Provider> */}
@@ -65,7 +77,7 @@ const FormDecorator: React.FC<FormProps> = (props) => {
   );
 };
 
-const useRequestProps = (props: any) => {
+const getRequestParams = (props: any) => {
   const { request, initialValue } = props;
   if (request) {
     return request;
@@ -77,49 +89,55 @@ const useRequestProps = (props: any) => {
   };
 };
 
-const useDef = (opts: any = {}, props: FormProps = {}) => {
-  return useRequest(useRequestProps(props), opts);
+const useDefaultValues = (opts: any = {}, props: FormProps = {}) => {
+  return useRequest(getRequestParams(props), opts);
 };
 
 const FormBlockContext = createContext<any>(null);
+FormBlockContext.displayName = 'FormBlockContext';
 
-export const Form: React.FC<FormProps> & { Designer?: any } = observer((props) => {
-  const { request, effects, initialValue, useValues = useDef, ...others } = props;
-  const fieldSchema = useFieldSchema();
-  const field = useField();
-  const form = useMemo(() => createForm({ effects }), []);
-  const result = useValues(
-    {
-      uid: fieldSchema['x-uid'],
-      async onSuccess(data) {
-        await form.reset();
-        form.setValues(data?.data);
+export const Form: React.FC<FormProps> & { Designer?: any } = observer(
+  (props) => {
+    const { request, effects, initialValue, useValues = useDefaultValues, ...others } = props;
+    const fieldSchema = useFieldSchema();
+    const field = useField();
+    const form = useMemo(() => createForm({ effects }), []);
+    const result = useValues(
+      {
+        uid: fieldSchema['x-uid'],
+        async onSuccess(data) {
+          await form.reset();
+          form.setValues(data?.data);
+          form.setInitialValues(data?.data);
+        },
       },
-    },
-    props,
-  );
-  const parent = useContext(FormBlockContext);
-  return (
-    <FormBlockContext.Provider value={{ parent, form, result, field, fieldSchema }}>
-      <Spin spinning={result?.loading || false}>
-        {fieldSchema['x-decorator'] === 'Form' ? (
-          <FormDecorator form={form} {...others} />
-        ) : (
-          <FormComponent form={form} {...others} />
-        )}
-      </Spin>
-    </FormBlockContext.Provider>
-  );
-});
+      props,
+    );
+    const parent = useContext(FormBlockContext);
+    return (
+      <FormBlockContext.Provider value={{ parent, form, result, field, fieldSchema }}>
+        <Spin spinning={result?.loading || false}>
+          {fieldSchema['x-decorator'] === 'Form' ? (
+            <FormDecorator form={form} {...others} />
+          ) : (
+            <FormComponent form={form} {...others} />
+          )}
+        </Spin>
+      </FormBlockContext.Provider>
+    );
+  },
+  { displayName: 'Form' },
+);
 
-Form.Designer = () => {
-  const { name, title } = useCollection();
+Form.Designer = function Designer() {
+  const { name, title } = useCollection_deprecated();
   const template = useSchemaTemplate();
+  const { componentNamePrefix } = useBlockTemplateContext();
   return (
     <GeneralSchemaDesigner template={template} title={title || name}>
-      <SchemaSettings.Template componentName={'Form'} collectionName={name} />
-      <SchemaSettings.Divider />
-      <SchemaSettings.Remove
+      <SchemaSettingsTemplate componentName={`${componentNamePrefix}Form`} collectionName={name} />
+      <SchemaSettingsDivider />
+      <SchemaSettingsRemove
         removeParentsIfNoChildren
         breakRemoveOn={{
           'x-component': 'Grid',

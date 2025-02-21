@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { mergeFields, parseFields, parseQuery, parseRequest } from '..';
 
 describe('utils', () => {
@@ -64,7 +73,10 @@ describe('utils', () => {
       });
 
       it('appends', async () => {
-        expect(mergeFields({}, { only: ['col1'], appends: ['col2'] })).toMatchObject({ only: ['col1'], appends: ['col2'] });
+        expect(mergeFields({}, { only: ['col1'], appends: ['col2'] })).toMatchObject({
+          only: ['col1'],
+          appends: ['col2'],
+        });
       });
     });
 
@@ -158,6 +170,45 @@ describe('utils', () => {
         associatedName: 'posts',
         associatedIndex: '1',
         actionName: 'list',
+      });
+    });
+
+    it('decode path', () => {
+      const params = parseRequest({
+        path: '/posts/%E7%9A%84%E6%B3%95%E5%9B%BD%E9%98%9F/comments',
+        method: 'POST',
+      });
+      expect(params).toMatchObject({
+        resourceName: 'comments',
+        associatedName: 'posts',
+        associatedIndex: '的法国队',
+        actionName: 'create',
+      });
+    });
+
+    it('decode associatedIndex', () => {
+      const params = parseRequest({
+        path: '/posts/a%2Fab/comments',
+        method: 'POST',
+      });
+      expect(params).toMatchObject({
+        resourceName: 'comments',
+        associatedName: 'posts',
+        associatedIndex: 'a/ab',
+        actionName: 'create',
+      });
+    });
+
+    it('decode path', () => {
+      const params = parseRequest({
+        path: '/posts/%25E7%259A%2584%25E6%25B3%2595%252F%25E5%259B%25BD%25E9%2598%259F/comments',
+        method: 'POST',
+      });
+      expect(params).toMatchObject({
+        resourceName: 'comments',
+        associatedName: 'posts',
+        associatedIndex: '的法/国队',
+        actionName: 'create',
       });
     });
 

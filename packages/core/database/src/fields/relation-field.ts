@@ -1,6 +1,15 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { BaseFieldOptions, Field } from './field';
 
-export interface BaseRelationFieldOptions extends BaseFieldOptions {}
+export type BaseRelationFieldOptions = BaseFieldOptions;
 
 export interface MultipleRelationFieldOptions extends BaseRelationFieldOptions {
   sortBy?: string | string[];
@@ -33,6 +42,33 @@ export abstract class RelationField extends Field {
    */
   get TargetModel() {
     return this.context.database.sequelize.models[this.target];
+  }
+
+  targetCollection() {
+    return this.context.database.getCollection(this.target);
+  }
+
+  isRelationField(): boolean {
+    return true;
+  }
+
+  keyPairsTypeMatched(type1, type2) {
+    type1 = type1.toLowerCase();
+    type2 = type2.toLowerCase();
+
+    const numberTypeGroups = ['integer', 'bigint', 'decimal', 'float', 'real', 'double', 'smallint', 'tinyint'];
+    const stringTypeGroups = ['string', 'char', 'text'];
+
+    // if types are in the same group then they are matched
+    if (numberTypeGroups.includes(type1) && numberTypeGroups.includes(type2)) {
+      return true;
+    }
+
+    if (stringTypeGroups.includes(type1) && stringTypeGroups.includes(type2)) {
+      return true;
+    }
+
+    return type1 === type2;
   }
 
   protected clearAccessors() {

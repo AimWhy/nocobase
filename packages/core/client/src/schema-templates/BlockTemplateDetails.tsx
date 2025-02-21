@@ -1,7 +1,18 @@
-import { Input, PageHeader as AntdPageHeader, Spin } from 'antd';
-import React, { useContext, useState } from 'react';
-import { useHistory, useRouteMatch } from 'react-router-dom';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import { PageHeader as AntdPageHeader } from '@ant-design/pro-layout';
+import { Input, Spin } from 'antd';
+import React, { useContext, useMemo, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { useAPIClient, useRequest, useSchemaTemplateManager } from '..';
+import { useNavigateNoUpdate } from '../application/CustomRouterContextProvider';
 import { RemoteSchemaComponent, SchemaComponentContext } from '../schema-component';
 
 const EditableTitle = (props) => {
@@ -58,31 +69,38 @@ const EditableTitle = (props) => {
 };
 
 export const BlockTemplateDetails = () => {
-  const history = useHistory();
-  const match = useRouteMatch<any>();
-  const key = match?.params?.key;
+  const navigate = useNavigateNoUpdate();
+  const params = useParams<any>();
+  const key = params?.key;
   const value = useContext(SchemaComponentContext);
-  const { data, loading } = useRequest({
+  const schemaComponentContext = useMemo(() => ({ ...value, designable: true }), [value]);
+
+  const { data, loading } = useRequest<{
+    data: any;
+  }>({
     resource: 'uiSchemaTemplates',
     action: 'get',
     params: {
       filterByTk: key,
     },
   });
+
   if (loading) {
     return <Spin />;
   }
+
   return (
     <div>
       <AntdPageHeader
+        style={{ backgroundColor: 'white' }}
         onBack={() => {
-          history.push('/admin/plugins/block-templates');
+          navigate('/admin/plugins/block-templates');
         }}
         ghost={false}
         title={<EditableTitle filterByTk={key} title={data?.data?.name} />}
       />
-      <div style={{ margin: 24 }}>
-        <SchemaComponentContext.Provider value={{ ...value, designable: true }}>
+      <div style={{ margin: 'var(--nb-spacing)' }}>
+        <SchemaComponentContext.Provider value={schemaComponentContext}>
           <RemoteSchemaComponent uid={data?.data?.uid} />
         </SchemaComponentContext.Provider>
       </div>

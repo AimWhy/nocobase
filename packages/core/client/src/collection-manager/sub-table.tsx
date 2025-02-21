@@ -1,11 +1,20 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { observer, useForm } from '@formily/react';
 import { cloneDeep } from 'lodash';
 import React, { createContext, useContext, useState } from 'react';
 import {
   CollectionOptions,
-  CollectionProvider,
+  CollectionProvider_deprecated,
   useActionContext,
-  useCollectionManager,
+  useCollectionManager_deprecated,
   useRecord,
   useRecordIndex,
   useRequest,
@@ -68,15 +77,16 @@ const collection: CollectionOptions = {
   ],
 };
 
-export const DataSourceContext = createContext(null);
+export const DataSourceContext_deprecated = createContext(null);
+DataSourceContext_deprecated.displayName = 'DataSourceContext_deprecated';
 
 const useSelectedRowKeys = () => {
-  const ctx = useContext(DataSourceContext);
+  const ctx = useContext(DataSourceContext_deprecated);
   return [ctx.selectedRowKeys, ctx.setSelectedRowKeys];
 };
 
-const useDataSource = (options) => {
-  const ctx = useContext(DataSourceContext);
+const useDataSource_deprecated = (options) => {
+  const ctx = useContext(DataSourceContext_deprecated);
   return useRequest(
     () => {
       return Promise.resolve({
@@ -91,7 +101,7 @@ const useDataSource = (options) => {
 };
 
 const useCreateAction = () => {
-  const ctx = useContext(DataSourceContext);
+  const ctx = useContext(DataSourceContext_deprecated);
   const form = useForm();
   const { setVisible } = useActionContext();
   return {
@@ -107,7 +117,7 @@ const useCreateAction = () => {
 };
 
 const useBulkDestroyAction = () => {
-  const ctx = useContext(DataSourceContext);
+  const ctx = useContext(DataSourceContext_deprecated);
   const { selectedRowKeys, setSelectedRowKeys } = ctx;
   return {
     async run() {
@@ -126,7 +136,7 @@ const useUpdateAction = () => {
   const recordIndex = useRecordIndex();
   const form = useForm();
   const { setVisible } = useActionContext();
-  const ctx = useContext(DataSourceContext);
+  const ctx = useContext(DataSourceContext_deprecated);
   return {
     async run() {
       const dataSource: any[] = ctx?.dataSource || [];
@@ -144,7 +154,7 @@ const useUpdateAction = () => {
 
 const useDestroyAction = () => {
   const recordIndex = useRecordIndex();
-  const ctx = useContext(DataSourceContext);
+  const ctx = useContext(DataSourceContext_deprecated);
   return {
     async run() {
       const dataSource: any[] = ctx.dataSource || [];
@@ -159,114 +169,120 @@ const useDestroyAction = () => {
 
 export const ds = {
   useSelectedRowKeys,
-  useDataSource,
+  useDataSource_deprecated,
   useCreateAction,
   useBulkDestroyAction,
   useUpdateAction,
   useDestroyAction,
 };
 
-export const SubFieldDataSourceProvider = observer((props) => {
-  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
-  const [dataSource, setDataSource] = useState([]);
-  const record = useRecord();
-  const api = useAPIClient();
-  const service = useRequest(
-    () => {
-      if (record.interface === 'subTable') {
-        if (record?.children?.length) {
-          return Promise.resolve({
-            data: record?.children || [],
-          });
+export const SubFieldDataSourceProvider_deprecated = observer(
+  (props) => {
+    const [selectedRowKeys, setSelectedRowKeys] = useState([]);
+    const [dataSource, setDataSource] = useState([]);
+    const record = useRecord();
+    const api = useAPIClient();
+    const service = useRequest(
+      () => {
+        if (record.interface === 'subTable') {
+          if (record?.children?.length) {
+            return Promise.resolve({
+              data: record?.children || [],
+            });
+          }
+          return api
+            .resource('fields')
+            .list({
+              paginate: false,
+              // appends: ['uiSchema'],
+              sort: 'sort',
+              filter: {
+                parentKey: record.key,
+              },
+            })
+            .then((res) => res?.data);
         }
-        return api
-          .resource('fields')
-          .list({
-            paginate: false,
-            appends: ['uiSchema'],
-            sort: 'sort',
-            filter: {
-              parentKey: record.key,
-            },
-          })
-          .then((res) => res?.data);
-      }
-      return Promise.resolve({
-        data: [],
-      });
-    },
-    {
-      onSuccess(data) {
-        console.log('dataSource1', data?.data);
-        setDataSource(data?.data);
+        return Promise.resolve({
+          data: [],
+        });
       },
-    },
-  );
-  return (
-    <CollectionProvider collection={collection}>
-      <DataSourceContext.Provider
-        value={{
-          rowKey: 'name',
-          service,
-          dataSource,
-          setDataSource,
-          selectedRowKeys,
-          setSelectedRowKeys,
-        }}
-      >
-        {props.children}
-      </DataSourceContext.Provider>
-    </CollectionProvider>
-  );
-});
+      {
+        onSuccess(data) {
+          console.log('dataSource1', data?.data);
+          setDataSource(data?.data);
+        },
+      },
+    );
+    return (
+      <CollectionProvider_deprecated collection={collection}>
+        <DataSourceContext_deprecated.Provider
+          value={{
+            rowKey: 'name',
+            service,
+            dataSource,
+            setDataSource,
+            selectedRowKeys,
+            setSelectedRowKeys,
+          }}
+        >
+          {props.children}
+        </DataSourceContext_deprecated.Provider>
+      </CollectionProvider_deprecated>
+    );
+  },
+  { displayName: 'SubFieldDataSourceProvider_deprecated' },
+);
 
-export const DataSourceProvider = observer((props: any) => {
-  const { rowKey, collection, association } = props;
-  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
-  const [dataSource, setDataSource] = useState([]);
-  const record = useRecord();
-  const api = useAPIClient();
-  const { getCollection } = useCollectionManager();
-  const coll = getCollection(collection);
-  const resourceOf = record?.[association.targetKey || 'id'];
-  const service = useRequest(
-    () => {
-      if (resourceOf) {
-        return api
-          .request({
-            resource: `${association.collectionName}.${association.name}`,
-            resourceOf,
-            action: 'list',
-            params: {
-              appends: coll?.fields?.filter((field) => field.target)?.map((field) => field.name),
-            },
-          })
-          .then((res) => res.data);
-      }
-      return Promise.resolve({
-        data: record?.[association.name] || [],
-      });
-    },
-    {
-      onSuccess(data) {
-        setDataSource(data?.data);
+export const DataSourceProvider_deprecated = observer(
+  (props: any) => {
+    const { rowKey, collection, association } = props;
+    const [selectedRowKeys, setSelectedRowKeys] = useState([]);
+    const [dataSource, setDataSource] = useState([]);
+    const record = useRecord();
+    const api = useAPIClient();
+    const { getCollection } = useCollectionManager_deprecated();
+    const coll = getCollection(collection);
+    const resourceOf = record?.[association.targetKey || 'id'];
+    const service = useRequest(
+      () => {
+        if (resourceOf) {
+          return api
+            .request({
+              resource: `${association.collectionName}.${association.name}`,
+              resourceOf,
+              action: 'list',
+              params: {
+                appends: coll?.fields?.filter((field) => field.target)?.map((field) => field.name),
+              },
+            })
+            .then((res) => res.data);
+        }
+        return Promise.resolve({
+          data: record?.[association.name] || [],
+        });
       },
-    },
-  );
-  return (
-    <CollectionProvider collection={coll}>
-      <DataSourceContext.Provider
-        value={{
-          rowKey,
-          service,
-          dataSource,
-          setDataSource,
-          selectedRowKeys,
-          setSelectedRowKeys,
-        }}
-      >
-        {props.children}
-      </DataSourceContext.Provider>
-    </CollectionProvider>
-  );
-});
+      {
+        onSuccess(data) {
+          setDataSource(data?.data);
+        },
+      },
+    );
+    return (
+      <CollectionProvider_deprecated collection={coll}>
+        <DataSourceContext_deprecated.Provider
+          value={{
+            rowKey,
+            service,
+            dataSource,
+            setDataSource,
+            selectedRowKeys,
+            setSelectedRowKeys,
+          }}
+        >
+          {props.children}
+        </DataSourceContext_deprecated.Provider>
+      </CollectionProvider_deprecated>
+    );
+  },
+  { displayName: 'DataSourceProvider_deprecated' },
+);

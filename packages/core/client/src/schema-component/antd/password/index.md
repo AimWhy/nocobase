@@ -1,24 +1,27 @@
----
-nav:
-  path: /client
-group:
-  path: /schema-components
----
-
 # Password
 
-## Examples
+密码输入框。更多属性请参考 [antd 文档](https://ant.design/components/input#components-input-demo-password-input)
 
-### Password
+```ts
+interface PasswordProps extends AntdPasswordProps {
+  checkStrength?: boolean;
+}
+```
 
-<code src="./demos/demo1.tsx" />
+## Basic Usage
 
-### Check strength
+<code src="./demos/new-demos/basic.tsx"></code>
 
-<code src="./demos/demo2.tsx" />
+## Check strength
 
-## API
+<code src="./demos/new-demos/checkStrength.tsx"></code>
 
-基于 antd 的 Password，新增的属性：
+## Read Pretty
 
-- `checkStrength` 检测密码强度
+```ts
+interface PasswordReadPrettyProps  {
+  value?: string;
+}
+```
+
+<code src="./demos/new-demos/read-pretty.tsx"></code>

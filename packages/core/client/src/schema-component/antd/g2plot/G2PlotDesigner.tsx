@@ -1,9 +1,24 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { ISchema, useField, useFieldSchema } from '@formily/react';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAPIClient } from '../../../api-client';
-import { GeneralSchemaDesigner, SchemaSettings } from '../../../schema-settings';
+import {
+  GeneralSchemaDesigner,
+  SchemaSettingsDivider,
+  SchemaSettingsModalItem,
+  SchemaSettingsRemove,
+} from '../../../schema-settings';
 import { useCompile, useDesignable } from '../../hooks';
+import _ from 'lodash';
 
 const validateJSON = {
   validator: `{{(value, rule)=> {
@@ -33,7 +48,7 @@ export const G2PlotDesigner = () => {
   const api = useAPIClient();
   return (
     <GeneralSchemaDesigner>
-      <SchemaSettings.ModalItem
+      <SchemaSettingsModalItem
         title={t('Edit chart')}
         schema={
           {
@@ -78,18 +93,20 @@ export const G2PlotDesigner = () => {
           if (typeof fn === 'function') {
             const result = fn.bind({ api })();
             if (result?.then) {
-              result.then(data => {
-                if (Array.isArray(data)) {
-                  field.componentProps.config.data = data;
-                }
-              });
+              result
+                .then((data) => {
+                  if (Array.isArray(data)) {
+                    field.componentProps.config.data = data;
+                  }
+                })
+                .catch(console.error);
             }
           } else {
             field.componentProps.config = conf;
           }
-          fieldSchema.title = title;
-          fieldSchema['x-component-props']['plot'] = plot;
-          fieldSchema['x-component-props']['config'] = JSON.parse(config);
+          _.set(fieldSchema, 'title', title);
+          _.set(fieldSchema, 'x-component-props.plot', plot);
+          _.set(fieldSchema, 'x-component-props.config', JSON.parse(config));
           dn.emit('patch', {
             schema: {
               title,
@@ -100,8 +117,8 @@ export const G2PlotDesigner = () => {
           dn.refresh();
         }}
       />
-      <SchemaSettings.Divider />
-      <SchemaSettings.Remove
+      <SchemaSettingsDivider />
+      <SchemaSettingsRemove
         removeParentsIfNoChildren
         breakRemoveOn={{
           'x-component': 'Grid',

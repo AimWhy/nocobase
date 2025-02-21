@@ -1,61 +1,112 @@
-import React from "react";
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { FormOutlined } from '@ant-design/icons';
+import React, { useCallback, useMemo } from 'react';
 
-import { useSchemaTemplateManager } from "../../schema-templates";
-import { SchemaInitializer } from "../SchemaInitializer";
-import { createFormBlockSchema, useRecordCollectionDataSourceItems } from "../utils";
+import { SchemaInitializerItem, useSchemaInitializer, useSchemaInitializerItem } from '../../application';
+import { useCollectionManager_deprecated } from '../../collection-manager';
+import { createCreateFormBlockUISchema } from '../../modules/blocks/data-blocks/form/createCreateFormBlockUISchema';
+import { useBlockTemplateContext, useSchemaTemplateManager } from '../../schema-templates';
+import { useRecordCollectionDataSourceItems } from '../utils';
 
-export const RecordAssociationFormBlockInitializer = (props) => {
-  const { item, onCreateBlockSchema, componentType, createBlockSchema, insert, ...others } = props;
+/**
+ * @deprecated
+ */
+export const RecordAssociationFormBlockInitializer = () => {
+  const itemConfig = useSchemaInitializerItem();
+  const { onCreateBlockSchema, componentType, createBlockSchema, ...others } = itemConfig;
+  const { insert } = useSchemaInitializer();
+  const { getCollection } = useCollectionManager_deprecated();
   const { getTemplateSchemaByMode } = useSchemaTemplateManager();
-  const field = item.field;
-  const collection = field.target;
-  const resource = `${field.collectionName}.${field.name}`;
+  const field = itemConfig.field;
+  const collectionName = field.target;
+  const collection = useMemo(() => getCollection(collectionName), [collectionName]);
   return (
-    <SchemaInitializer.Item
+    <SchemaInitializerItem
       icon={<FormOutlined />}
       {...others}
       onClick={async ({ item }) => {
-        const action = ['hasOne', 'belongsTo'].includes(field.type) ? 'get' : null;
-        const actionInitializers = ['hasOne', 'belongsTo'].includes(field.type)
-          ? 'UpdateFormActionInitializers'
-          : 'CreateFormActionInitializers';
-
         if (item.template) {
-          const s = await getTemplateSchemaByMode(item);
+          const template = await getTemplateSchemaByMode(item);
           if (item.template.componentName === 'FormItem') {
-            const blockSchema = createFormBlockSchema({
-              collection,
-              resource,
-              association: resource,
-              action,
-              useSourceId: '{{ useSourceIdFromParentRecord }}',
-              useParams: '{{ useParamsFromRecord }}',
-              actionInitializers,
-              template: s,
+            const blockSchema = createCreateFormBlockUISchema({
+              dataSource: collection.dataSource,
+              association: `${field.collectionName}.${field.name}`,
+              templateSchema: template,
             });
             if (item.mode === 'reference') {
               blockSchema['x-template-key'] = item.template.key;
             }
             insert(blockSchema);
           } else {
-            insert(s);
+            insert(template);
           }
         } else {
           insert(
-            createFormBlockSchema({
-              collection,
-              resource,
-              association: resource,
-              action,
-              useSourceId: '{{ useSourceIdFromParentRecord }}',
-              useParams: '{{ useParamsFromRecord }}',
-              actionInitializers,
+            createCreateFormBlockUISchema({
+              dataSource: collection.dataSource,
+              association: `${field.collectionName}.${field.name}`,
             }),
           );
         }
       }}
-      items={useRecordCollectionDataSourceItems('FormItem', item, collection, resource)}
+      items={useRecordCollectionDataSourceItems(
+        'FormItem',
+        itemConfig,
+        collection,
+        `${field.collectionName}.${field.name}`,
+      )}
     />
   );
 };
+
+export function useCreateAssociationFormBlock() {
+  const { insert } = useSchemaInitializer();
+  const { getCollection } = useCollectionManager_deprecated();
+  const { componentNamePrefix } = useBlockTemplateContext();
+
+  const createAssociationFormBlock = useCallback(
+    ({ item }) => {
+      const field = item.associationField;
+      const collection = getCollection(field.target);
+
+      insert(
+        createCreateFormBlockUISchema({
+          dataSource: collection.dataSource,
+          association: `${field.collectionName}.${field.name}`,
+        }),
+      );
+    },
+    [getCollection, insert],
+  );
+
+  const templateWrap = useCallback(
+    (templateSchema, { item }) => {
+      if (item.template.componentName === `${componentNamePrefix}FormItem` && item.associationField) {
+        const field = item.associationField;
+        const collection = getCollection(field.target);
+        const blockSchema = createCreateFormBlockUISchema({
+          dataSource: collection.dataSource,
+          association: `${field.collectionName}.${field.name}`,
+          templateSchema: templateSchema,
+        });
+        if (item.mode === 'reference') {
+          blockSchema['x-template-key'] = item.template.key;
+        }
+        return blockSchema;
+      } else {
+        return templateSchema;
+      }
+    },
+    [getCollection, componentNamePrefix],
+  );
+
+  return { createAssociationFormBlock, templateWrap };
+}

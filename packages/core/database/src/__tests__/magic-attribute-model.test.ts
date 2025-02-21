@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { mockDatabase } from '.';
 import { Database, MagicAttributeModel } from '..';
 
@@ -6,10 +15,56 @@ describe('magic-attribute-model', () => {
 
   beforeEach(async () => {
     db = mockDatabase();
+    await db.clean({ drop: true });
   });
 
   afterEach(async () => {
     await db.close();
+  });
+
+  it.skip('should update with magic attribute', async () => {
+    db.registerModels({ MagicAttributeModel });
+
+    const Test = db.collection({
+      name: 'tests',
+      model: 'MagicAttributeModel',
+      fields: [
+        { type: 'string', name: 'title' },
+        { type: 'json', name: 'options' },
+      ],
+    });
+
+    await db.sync();
+    const record0 = await Test.repository.create({
+      values: {
+        title: 'xxx',
+        other: 'a',
+        actions: {
+          list: {
+            a: 'b',
+            c: 'd',
+          },
+          get: {
+            a: 'b',
+            c: 'd',
+          },
+        },
+      },
+    });
+
+    await record0.update({
+      title: 'xxx',
+      other: 'b',
+      actions: {
+        list: {
+          a: 'b',
+          c: 'd',
+        },
+      },
+    });
+
+    const data = record0.toJSON();
+    expect(data['actions']['get']).toBeUndefined();
   });
 
   it('case 0', async () => {

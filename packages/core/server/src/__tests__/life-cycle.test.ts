@@ -1,17 +1,35 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import { vi } from 'vitest';
 import Application from '../application';
 import { Plugin } from '../plugin';
 
 describe('application life cycle', () => {
-  it('should start application', async () => {
-    const app = new Application({
+  let app: Application;
+
+  beforeEach(async () => {
+    app = new Application({
       database: {
         dialect: 'sqlite',
         storage: ':memory:',
       },
     });
+  });
 
-    const loadFn = jest.fn();
-    const installFn = jest.fn();
+  afterEach(async () => {
+    await app.destroy();
+  });
+
+  it('should start application', async () => {
+    const loadFn = vi.fn();
+    const installFn = vi.fn();
 
     // register plugin
     class TestPlugin extends Plugin {
@@ -34,20 +52,5 @@ describe('application life cycle', () => {
     expect(installFn).toHaveBeenCalledTimes(0);
     await app.install();
     expect(installFn).toHaveBeenCalledTimes(1);
-  });
-
-  it('should listen application', async () => {
-    const app = new Application({
-      database: {
-        dialect: 'sqlite',
-        storage: ':memory:',
-      },
-    });
-
-    await app.start({ listen: { port: 13090 } });
-    expect(app.listenServer).not.toBeNull();
-
-    await app.stop();
-    expect(app.listenServer).toBeNull();
   });
 });

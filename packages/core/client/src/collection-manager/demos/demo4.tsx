@@ -1,9 +1,11 @@
+
+
 import { ISchema } from '@formily/react';
 import {
   AntdSchemaComponentProvider,
-  CollectionManagerProvider,
+  ExtendCollectionsProvider,
   SchemaComponent,
-  SchemaComponentProvider
+  SchemaComponentProvider,
 } from '@nocobase/client';
 import React from 'react';
 
@@ -12,7 +14,7 @@ const schema: ISchema = {
   properties: {
     block1: {
       type: 'void',
-      'x-decorator': 'CollectionProvider',
+      'x-decorator': 'CollectionProvider_deprecated',
       'x-decorator-props': {
         name: 'posts',
       },
@@ -155,9 +157,9 @@ export default () => {
   return (
     <SchemaComponentProvider>
       <AntdSchemaComponentProvider>
-        <CollectionManagerProvider collections={collections}>
+        <ExtendCollectionsProvider collections={collections}>
           <SchemaComponent schema={schema} />
-        </CollectionManagerProvider>
+        </ExtendCollectionsProvider>
       </AntdSchemaComponentProvider>
     </SchemaComponentProvider>
   );

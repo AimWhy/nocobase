@@ -1,26 +1,42 @@
-import { Field } from '@formily/core';
-import { connect, useField, useFieldSchema } from '@formily/react';
-import { merge } from '@formily/shared';
-import { Cascader, Select, Space } from 'antd';
-import React, { useEffect, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { useFormBlockContext } from '../../../block-provider';
-import {
-  CollectionFieldProvider,
-  useCollection,
-  useCollectionField,
-  useCollectionFilterOptions,
-} from '../../../collection-manager';
-import { useCompile, useComponent } from '../../../schema-component';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
 
-const DYNAMIC_RECORD_REG = /\{\{\s*currentRecord\.(.*)\s*\}\}/;
-const DYNAMIC_USER_REG = /\{\{\s*currentUser\.(.*)\s*\}\}/;
-const DYNAMIC_TIME_REG = /\{\{\s*currentTime\s*\}\}/;
+import { Field } from '@formily/core';
+import { useField, useFieldSchema } from '@formily/react';
+import { merge } from '@formily/shared';
+import _ from 'lodash';
+import React, { useCallback, useEffect, useMemo } from 'react';
+import { useFormBlockContext } from '../../../block-provider/FormBlockProvider';
+import {
+  useCollectionField_deprecated,
+  useCollectionFilterOptions,
+  useCollectionManager_deprecated,
+  useCollection_deprecated,
+} from '../../../collection-manager';
+import { CollectionFieldProvider } from '../../../data-source';
+import { useRecord } from '../../../record-provider';
+import { useCompile, useComponent } from '../../../schema-component';
+import { VariableInput, getShouldChange } from '../../../schema-settings/VariableInput/VariableInput';
+import { Option } from '../../../schema-settings/VariableInput/type';
+import { formatVariableScop } from '../../../schema-settings/VariableInput/utils/formatVariableScop';
+import { useLocalVariables, useVariables } from '../../../variables';
+
+interface AssignedFieldProps {
+  value: any;
+  onChange: (value: any) => void;
+  [key: string]: any;
+}
 
 const InternalField: React.FC = (props) => {
   const field = useField<Field>();
   const fieldSchema = useFieldSchema();
-  const { name, interface: interfaceType, uiSchema } = useCollectionField();
+  const { uiSchema } = useCollectionField_deprecated();
   const component = useComponent(uiSchema?.['x-component']);
   const compile = useCompile();
   const setFieldProps = (key, value) => {
@@ -31,14 +47,6 @@ const InternalField: React.FC = (props) => {
       field.required = !!uiSchema['required'];
     }
   };
-  const ctx = useFormBlockContext();
-
-  useEffect(() => {
-    if (ctx?.field) {
-      ctx.field.added = ctx.field.added || new Set();
-      ctx.field.added.add(fieldSchema.name);
-    }
-  });
 
   useEffect(() => {
     if (!uiSchema) {
@@ -48,9 +56,9 @@ const InternalField: React.FC = (props) => {
     setFieldProps('title', uiSchema.title);
     setFieldProps('description', uiSchema.description);
     setFieldProps('initialValue', uiSchema.default);
-    if (!field.validator && uiSchema['x-validator']) {
-      field.validator = uiSchema['x-validator'];
-    }
+    // if (!field.validator && uiSchema['x-validator']) {
+    //   field.validator = uiSchema['x-validator'];
+    // }
     if (fieldSchema['x-disabled'] === true) {
       field.disabled = true;
     }
@@ -71,157 +79,72 @@ const InternalField: React.FC = (props) => {
   return React.createElement(component, props, props.children);
 };
 
-const CollectionField = connect((props) => {
+const CollectionField = (props) => {
   const fieldSchema = useFieldSchema();
   return (
     <CollectionFieldProvider name={fieldSchema.name}>
       <InternalField {...props} />
     </CollectionFieldProvider>
   );
-});
+};
 
 export enum AssignedFieldValueType {
   ConstantValue = 'constantValue',
   DynamicValue = 'dynamicValue',
 }
 
-export const AssignedField = (props: any) => {
-  const { t } = useTranslation();
-  const compile = useCompile();
-  const field = useField<Field>();
+export const AssignedField = (props: AssignedFieldProps) => {
+  const { value, onChange } = props;
+  const { getCollectionFields, getAllCollectionsInheritChain } = useCollectionManager_deprecated();
+  const collection = useCollection_deprecated();
+  const { form } = useFormBlockContext();
   const fieldSchema = useFieldSchema();
-  const isDynamicValue =
-    DYNAMIC_RECORD_REG.test(field.value) || DYNAMIC_USER_REG.test(field.value) || DYNAMIC_TIME_REG.test(field.value);
-  const initType = isDynamicValue ? AssignedFieldValueType.DynamicValue : AssignedFieldValueType.ConstantValue;
-  const [type, setType] = useState<string>(initType);
-  const initFieldType = {
-    [`${DYNAMIC_TIME_REG.test(field.value)}`]: 'currentTime',
-    [`${DYNAMIC_USER_REG.test(field.value)}`]: 'currentUser',
-    [`${DYNAMIC_RECORD_REG.test(field.value)}`]: 'currentRecord',
-  };
-  const [fieldType, setFieldType] = useState<string>(initFieldType['true']);
-  const initRecordValue = DYNAMIC_RECORD_REG.exec(field.value)?.[1]?.split('.') ?? [];
-  const [recordValue, setRecordValue] = useState<any>(initRecordValue);
-  const initUserValue = DYNAMIC_USER_REG.exec(field.value)?.[1]?.split('.') ?? [];
-  const [userValue, setUserValue] = useState<any>(initUserValue);
-  const initValue = isDynamicValue ? '' : field.value;
-  const [value, setValue] = useState(initValue);
-  const [options, setOptions] = useState<any[]>([]);
-  const { getField } = useCollection();
+  const record = useRecord();
+  const variables = useVariables();
+  const localVariables = useLocalVariables();
+  const currentFormFields = useCollectionFilterOptions(collection);
+
+  const { name, getField } = collection;
   const collectionField = getField(fieldSchema.name);
-  const fields = useCollectionFilterOptions(collectionField?.collectionName);
-  const userFields = useCollectionFilterOptions('users');
-  const dateTimeFields = ['createdAt', 'datetime', 'time', 'updatedAt'];
-  useEffect(() => {
-    const opt = [
-      {
-        name: 'currentRecord',
-        title: t('Current record'),
-      },
-      {
-        name: 'currentUser',
-        title: t('Current user'),
-      },
-    ];
-    if (dateTimeFields.includes(collectionField.interface)) {
-      opt.unshift({
-        name: 'currentTime',
-        title: t('Current time'),
-      });
-    } else {
-    }
-    setOptions(compile(opt));
-  }, []);
 
-  useEffect(() => {
-    if (type === AssignedFieldValueType.ConstantValue) {
-      field.value = value;
-    } else {
-      if (fieldType === 'currentTime') {
-        field.value = '{{currentTime}}';
-      } else if (fieldType === 'currentUser') {
-        userValue?.length > 0 && (field.value = `{{currentUser.${userValue.join('.')}}}`);
-      } else if (fieldType === 'currentRecord') {
-        recordValue?.length > 0 && (field.value = `{{currentRecord.${recordValue.join('.')}}}`);
+  const shouldChange = useMemo(
+    () => getShouldChange({ collectionField, variables, localVariables, getAllCollectionsInheritChain }),
+    [collectionField, getAllCollectionsInheritChain, localVariables, variables],
+  );
+
+  const returnScope = useCallback(
+    (scope: Option[]) => {
+      const currentForm = scope.find((item) => item.value === '$nForm');
+      const fields = getCollectionFields(name);
+
+      // fix https://nocobase.height.app/T-1355
+      // 工作流人工节点的 `自定义表单` 区块，与其它表单区块不同，根据它的数据表名称，获取到的字段列表为空，所以需要在这里特殊处理一下
+      if (!fields?.length && currentForm) {
+        currentForm.children = formatVariableScop(currentFormFields);
       }
-    }
-  }, [type, value, fieldType, userValue, recordValue]);
 
-  useEffect(() => {
-    if (type === AssignedFieldValueType.ConstantValue) {
-      setFieldType(null);
-      setUserValue([]);
-      setRecordValue([]);
-    }
-  }, [type]);
+      return scope;
+    },
+    [currentFormFields, name],
+  );
 
-  const typeChangeHandler = (val) => {
-    setType(val);
-  };
-
-  const valueChangeHandler = (val) => {
-    setValue(val?.target?.value ?? val);
-  };
-
-  const fieldTypeChangeHandler = (val) => {
-    setFieldType(val);
-  };
-  const recordChangeHandler = (val) => {
-    setRecordValue(val);
-  };
-  const userChangeHandler = (val) => {
-    setUserValue(val);
-  };
+  const renderSchemaComponent = useCallback(
+    ({ value, onChange }): React.JSX.Element => {
+      return <CollectionField {...props} value={value} onChange={onChange} />;
+    },
+    [JSON.stringify(_.omit(props, 'value'))],
+  );
   return (
-    <Space>
-      <Select defaultValue={type} value={type} style={{ width: 150 }} onChange={typeChangeHandler}>
-        <Select.Option value={AssignedFieldValueType.ConstantValue}>{t('Constant value')}</Select.Option>
-        <Select.Option value={AssignedFieldValueType.DynamicValue}>{t('Dynamic value')}</Select.Option>
-      </Select>
-
-      {type === AssignedFieldValueType.ConstantValue ? (
-        <CollectionField {...props} value={value} onChange={valueChangeHandler} style={{ minWidth: 150 }} />
-      ) : (
-        <Select defaultValue={fieldType} value={fieldType} style={{ minWidth: 150 }} onChange={fieldTypeChangeHandler}>
-          {options?.map((opt) => {
-            return (
-              <Select.Option key={opt.name} value={opt.name}>
-                {opt.title}
-              </Select.Option>
-            );
-          })}
-        </Select>
-      )}
-      {fieldType === 'currentRecord' && (
-        <Cascader
-          fieldNames={{
-            label: 'title',
-            value: 'name',
-            children: 'children',
-          }}
-          style={{
-            minWidth: 150,
-          }}
-          options={compile(fields)}
-          onChange={recordChangeHandler}
-          defaultValue={recordValue}
-        />
-      )}
-      {fieldType === 'currentUser' && (
-        <Cascader
-          fieldNames={{
-            label: 'title',
-            value: 'name',
-            children: 'children',
-          }}
-          style={{
-            minWidth: 150,
-          }}
-          options={compile(userFields)}
-          onChange={userChangeHandler}
-          defaultValue={userValue}
-        />
-      )}
-    </Space>
+    <VariableInput
+      form={form}
+      record={record}
+      value={value}
+      onChange={onChange}
+      renderSchemaComponent={renderSchemaComponent}
+      collectionField={collectionField}
+      shouldChange={shouldChange}
+      returnScope={returnScope}
+      targetFieldSchema={fieldSchema}
+    />
   );
 };

@@ -1,21 +1,25 @@
-import { Model } from '../model';
-import { CreateOptions } from '../repository';
-import { SingleRelationFindOption, SingleRelationRepository } from './single-relation-repository';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
 
-interface IHasOneRepository<M extends Model> {
-  // 不需要 findOne，find 就是 findOne
-  find(options?: SingleRelationFindOption): Promise<M>;
-  findOne(options?: SingleRelationFindOption): Promise<M>;
-  // 新增并关联，如果存在关联，解除之后，与新数据建立关联
-  create(options?: CreateOptions): Promise<M>;
-  // 更新
-  update(options?): Promise<M>;
-  // 删除
-  destroy(): Promise<Boolean>;
-  // 建立关联
-  set(primaryKey: any): Promise<void>;
-  // 移除关联
-  remove(): Promise<void>;
+import { HasOne } from 'sequelize';
+import { SingleRelationRepository } from './single-relation-repository';
+
+export class HasOneRepository extends SingleRelationRepository {
+  /**
+   * @internal
+   */
+  filterOptions(sourceModel) {
+    const association = this.association as HasOne;
+
+    return {
+      // @ts-ignore
+      [association.foreignKey]: sourceModel.get(association.sourceKey),
+    };
+  }
 }
-
-export class HasOneRepository extends SingleRelationRepository implements IHasOneRepository<any> {}

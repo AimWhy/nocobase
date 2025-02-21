@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 const chalk = require('chalk');
 const crypto = require('crypto');
 const { existsSync } = require('fs');
@@ -51,7 +60,7 @@ class AppGenerator extends Generator {
 
   checkDialect() {
     const dialect = this.args.dbDialect;
-    const supportDialects = ['mysql', 'sqlite', 'postgres'];
+    const supportDialects = ['mysql', 'mariadb', 'sqlite', 'postgres'];
     if (!supportDialects.includes(dialect)) {
       console.log(
         `dialect ${chalk.red(dialect)} is not supported, currently supported dialects are ${chalk.green(
@@ -69,7 +78,8 @@ class AppGenerator extends Generator {
     const { dbDialect, allDbDialect } = this.args;
 
     if (allDbDialect) {
-      dependencies.push(`"mysql2": "^2.3.3"`);
+      dependencies.push(`"mysql2": "^3.11.0"`);
+      dependencies.push(`"mariadb": "^2.5.6"`);
       dependencies.push(`"pg": "^8.7.3"`);
       dependencies.push(`"pg-hstore": "^2.3.4"`);
       dependencies.push(`"sqlite3": "^5.0.8"`);
@@ -84,7 +94,7 @@ class AppGenerator extends Generator {
         break;
       case 'mysql':
         if (!allDbDialect) {
-          dependencies.push(`"mysql2": "^2.3.3"`);
+          dependencies.push(`"mysql2": "^3.11.0"`);
         }
         envs.push(`DB_HOST=${env.DB_HOST || 'localhost'}`);
         envs.push(`DB_PORT=${env.DB_PORT || 3306}`);
@@ -92,6 +102,17 @@ class AppGenerator extends Generator {
         envs.push(`DB_USER=${env.DB_USER || ''}`);
         envs.push(`DB_PASSWORD=${env.DB_PASSWORD || ''}`);
         break;
+      case 'mariadb':
+        if (!allDbDialect) {
+          dependencies.push(`"mariadb": "^2.5.6"`);
+        }
+        envs.push(`DB_HOST=${env.DB_HOST || 'localhost'}`);
+        envs.push(`DB_PORT=${env.DB_PORT || 3306}`);
+        envs.push(`DB_DATABASE=${env.DB_DATABASE || ''}`);
+        envs.push(`DB_USER=${env.DB_USER || ''}`);
+        envs.push(`DB_PASSWORD=${env.DB_PASSWORD || ''}`);
+        break;
+      case 'kingbase':
       case 'postgres':
         if (!allDbDialect) {
           dependencies.push(`"pg": "^8.7.3"`);
@@ -105,7 +126,7 @@ class AppGenerator extends Generator {
         break;
     }
 
-    const keys = ['PLUGIN_PACKAGE_PREFIX', 'DB_HOST', 'DB_PORT', 'DB_DATABASE', 'DB_USER', 'DB_PASSWORD', 'DB_STORAGE'];
+    const keys = ['DB_HOST', 'DB_PORT', 'DB_DATABASE', 'DB_USER', 'DB_PASSWORD', 'DB_STORAGE'];
 
     for (const key in env) {
       if (keys.includes(key)) {
@@ -123,7 +144,7 @@ class AppGenerator extends Generator {
         APP_ENV: 'development',
         DB_DIALECT: dbDialect,
         APP_KEY: crypto.randomBytes(256).toString('base64'),
-        PLUGIN_PACKAGE_PREFIX: `@nocobase/plugin-,@nocobase/preset-,@${this.context.name}/plugin-`,
+        // PLUGIN_PACKAGE_PREFIX: `@nocobase/plugin-,@nocobase/preset-,@${this.context.name}/plugin-`,
         ...env,
       },
     };
@@ -167,9 +188,6 @@ class AppGenerator extends Generator {
       path: join(__dirname, '../templates/app'),
       target: this.cwd,
     });
-
-    await this.downloadServerPackage();
-    await this.downloadClientPackage();
 
     this.checkDbEnv();
 

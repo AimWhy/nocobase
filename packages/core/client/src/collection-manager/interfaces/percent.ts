@@ -1,8 +1,17 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import { registerValidateRules } from '@formily/core';
 import { ISchema } from '@formily/react';
-import { defaultProps, operators, unique } from './properties';
-import { IField } from './types';
 import { i18n } from '../../i18n';
-import { registerValidateFormats, registerValidateRules, registerValidateLocale } from '@formily/core';
+import { defaultProps, operators, unique } from './properties';
+import { CollectionFieldInterface } from '../../data-source/collection-field-interface/CollectionFieldInterface';
 
 registerValidateRules({
   percentMode(value, rule) {
@@ -13,7 +22,7 @@ registerValidateRules({
         return {
           type: 'error',
           message: `${i18n.t('The field value cannot be greater than ')}${maxValue * 100}%`,
-        }
+        };
       }
     }
 
@@ -22,7 +31,7 @@ registerValidateRules({
         return {
           type: 'error',
           message: `${i18n.t('The field value cannot be less than ')}${minValue * 100}%`,
-        }
+        };
       }
     }
 
@@ -36,25 +45,25 @@ registerValidateRules({
       return {
         type: 'error',
         message: `${i18n.t('The field value is not an integer number')}`,
-      }
+      };
     }
 
     return true;
-  }
-})
+  },
+});
 
 // registerValidateFormats({
 //   percentInteger: /^(\d+)(.\d{0,2})?$/,
 // });
 
-export const percent: IField = {
-  name: 'percent',
-  type: 'object',
-  group: 'basic',
-  order: 6,
-  title: '{{t("Percent")}}',
-  sortable: true,
-  default: {
+export class PercentFieldInterface extends CollectionFieldInterface {
+  name = 'percent';
+  type = 'object';
+  group = 'basic';
+  order = 8;
+  title = '{{t("Percent")}}';
+  sortable = true;
+  default = {
     type: 'float',
     // name,
     uiSchema: {
@@ -63,13 +72,21 @@ export const percent: IField = {
       'x-component': 'Percent',
       'x-component-props': {
         stringMode: true,
-        step: '0',
+        step: '1',
         addonAfter: '%',
       },
     },
-  },
-  hasDefaultValue: true,
-  properties: {
+  };
+  schemaInitialize(schema: ISchema, { field, block, readPretty, action }) {
+    const props = (schema['x-component-props'] = schema['x-component-props'] || {});
+    schema['x-component-props'].style = {
+      ...(props.style || {}),
+      width: '100%',
+    };
+  }
+  availableTypes = ['float', 'double', 'decimal'];
+  hasDefaultValue = true;
+  properties = {
     ...defaultProps,
     unique,
     'uiSchema.x-component-props.step': {
@@ -77,9 +94,9 @@ export const percent: IField = {
       title: '{{t("Precision")}}',
       'x-component': 'Select',
       'x-decorator': 'FormItem',
-      default: '0',
+      default: '1',
       enum: [
-        { value: '0', label: '1%' },
+        { value: '1', label: '1%' },
         { value: '0.1', label: '1.0%' },
         { value: '0.01', label: '1.00%' },
         { value: '0.001', label: '1.000%' },
@@ -87,11 +104,12 @@ export const percent: IField = {
         { value: '0.00001', label: '1.00000%' },
       ],
     },
-  },
-  filterable: {
+  };
+  filterable = {
     operators: operators.number,
-  },
-  validateSchema(fieldSchema) {
+  };
+  titleUsable = true;
+  validateSchema = (fieldSchema) => {
     return {
       maxValue: {
         type: 'number',
@@ -104,7 +122,9 @@ export const percent: IField = {
         'x-reactions': `{{(field) => {
           const targetValue = field.query('.minimum').value();
           field.selfErrors =
-            !!targetValue && !!field.value && targetValue > field.value ? '${i18n.t('Maximum must greater than minimum')}' : ''
+            !!targetValue && !!field.value && targetValue > field.value ? '${i18n.t(
+              'Maximum must greater than minimum',
+            )}' : ''
         }}}`,
       },
       minValue: {
@@ -119,7 +139,9 @@ export const percent: IField = {
           dependencies: ['.maximum'],
           fulfill: {
             state: {
-              selfErrors: `{{!!$deps[0] && !!$self.value && $deps[0] < $self.value ? '${i18n.t('Minimum must less than maximum')}' : ''}}`,
+              selfErrors: `{{!!$deps[0] && !!$self.value && $deps[0] < $self.value ? '${i18n.t(
+                'Minimum must less than maximum',
+              )}' : ''}}`,
             },
           },
         },
@@ -132,10 +154,12 @@ export const percent: IField = {
         'x-component-props': {
           allowClear: true,
         },
-        enum: [{
-          label: '{{ t("Integer") }}',
-          value: 'Integer',
-        }]
+        enum: [
+          {
+            label: '{{ t("Integer") }}',
+            value: 'Integer',
+          },
+        ],
       },
       pattern: {
         type: 'string',
@@ -145,8 +169,8 @@ export const percent: IField = {
         'x-component-props': {
           prefix: '/',
           suffix: '/',
-        }
+        },
       },
     };
-  }
-};
+  };
+}

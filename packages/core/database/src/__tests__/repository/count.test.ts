@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { mockDatabase } from '../index';
 import { HasManyRepository } from '../../relation-repository/hasmany-repository';
 import { Collection } from '../../collection';
@@ -14,6 +23,8 @@ describe('count', () => {
 
   beforeEach(async () => {
     db = mockDatabase();
+    await db.clean({ drop: true });
+
     User = db.collection({
       name: 'users',
       fields: [
@@ -117,7 +128,7 @@ describe('count', () => {
       appends: ['tags'],
     });
 
-    expect(posts[0][0]['tags']).toBeDefined();
+    expect(posts[0][0].get('tags')).toBeDefined();
   });
 
   test('without filter params', async () => {

@@ -1,17 +1,26 @@
-import { ArrayTable } from '@formily/antd';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import { ArrayTable } from '@formily/antd-v5';
 import { ISchema, useForm } from '@formily/react';
 import { uid } from '@formily/shared';
-import { omit } from 'lodash';
 import cloneDeep from 'lodash/cloneDeep';
+import omit from 'lodash/omit';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useRequest } from '../../api-client';
+import { useAPIClient, useRequest } from '../../api-client';
 import { RecordProvider, useRecord } from '../../record-provider';
-import { ActionContext, SchemaComponent, useActionContext, useCompile } from '../../schema-component';
-import { useCancelAction } from '../action-hooks';
-import { useCollectionManager } from '../hooks';
-import { IField } from '../interfaces/types';
+import { ActionContextProvider, SchemaComponent, useActionContext, useCompile } from '../../schema-component';
 import { useResourceActionContext, useResourceContext } from '../ResourceActionProvider';
+import { useCancelAction } from '../action-hooks';
+import { useCollectionManager_deprecated } from '../hooks';
+import { IField } from '../interfaces/types';
 import * as components from './components';
 
 const getSchema = (schema: IField, record: any, compile, getContainer): ISchema => {
@@ -26,10 +35,10 @@ const getSchema = (schema: IField, record: any, compile, getContainer): ISchema 
     name: {
       'x-component': 'CollectionField',
       'x-decorator': 'FormItem',
-      'x-disabled': true,
+      // 'x-disabled': true,
     },
   };
-  properties.name['x-disabled'] = true;
+  // properties.name['x-disabled'] = true;
   if (schema.hasDefaultValue === true) {
     properties['defaultValue'] = cloneDeep(schema.default.uiSchema);
     properties['defaultValue']['title'] = compile('{{ t("Default value") }}');
@@ -49,6 +58,17 @@ const getSchema = (schema: IField, record: any, compile, getContainer): ISchema 
         title: '{{ t("Edit collection") }}',
         properties: {
           ...properties,
+          filterTargetKey: {
+            title: `{{ t("Record unique key")}}`,
+            type: 'single',
+            description: `{{t( "If a collection lacks a primary key, you must configure a unique record key to locate row records within a block, failure to configure this will prevent the creation of data blocks for the collection.")}}`,
+            'x-decorator': 'FormItem',
+            'x-component': 'Select',
+            'x-component-props': {
+              multiple: true,
+            },
+            'x-reactions': ['{{useAsyncDataSource(loadFilterTargetKeys)}}'],
+          },
           footer: {
             type: 'void',
             'x-component': 'Action.Drawer.Footer',
@@ -78,10 +98,19 @@ const getSchema = (schema: IField, record: any, compile, getContainer): ISchema 
 
 export const useValuesFromRecord = (options) => {
   const record = useRecord();
-  const result = useRequest(() => Promise.resolve({ data: { autoGenId: true, ...record } }), {
-    ...options,
-    manual: true,
-  });
+  const result = useRequest(
+    () =>
+      Promise.resolve({
+        data: {
+          ...omit(cloneDeep(record), ['__parent', '__collectionName']),
+          category: record?.category.map((v) => v.id),
+        },
+      }),
+    {
+      ...options,
+      manual: true,
+    },
+  );
   const ctx = useActionContext();
   useEffect(() => {
     if (ctx.visible) {
@@ -92,16 +121,21 @@ export const useValuesFromRecord = (options) => {
 };
 
 export const useUpdateCollectionActionAndRefreshCM = (options) => {
-  const { refreshCM } = useCollectionManager();
+  const { refreshCM } = useCollectionManager_deprecated();
   const form = useForm();
   const ctx = useActionContext();
   const { refresh } = useResourceActionContext();
   const { resource, targetKey } = useResourceContext();
-  const { [targetKey]: filterByTk } = useRecord();
+  const { [targetKey]: filterByTk, template } = useRecord();
+  const api = useAPIClient();
+  const collectionResource = template === 'sql' ? api.resource('sqlCollection') : resource;
   return {
     async run() {
       await form.submit();
-      await resource.update({ filterByTk, values: omit(form.values, ['fields']) });
+      await collectionResource.update({
+        filterByTk,
+        values: template === 'sql' ? form.values : omit(form.values, ['fields']),
+      });
       ctx.setVisible(false);
       await form.reset();
       refresh();
@@ -116,8 +150,8 @@ export const EditCollection = (props) => {
 };
 
 export const EditCollectionAction = (props) => {
-  const { scope, getContainer, item: record, children } = props;
-  const { getTemplate } = useCollectionManager();
+  const { scope, getContainer, item: record, children, ...otherProps } = props;
+  const { getTemplate } = useCollectionManager_deprecated();
   const [visible, setVisible] = useState(false);
   const [schema, setSchema] = useState({});
   const { t } = useTranslation();
@@ -125,10 +159,11 @@ export const EditCollectionAction = (props) => {
 
   return (
     <RecordProvider record={record}>
-      <ActionContext.Provider value={{ visible, setVisible }}>
+      <ActionContextProvider value={{ visible, setVisible }}>
         <a
+          {...otherProps}
           onClick={async () => {
-            const templateConf = getTemplate(record.template);
+            const templateConf: any = getTemplate(record.template);
             const schema = getSchema(
               {
                 ...templateConf,
@@ -155,7 +190,7 @@ export const EditCollectionAction = (props) => {
             ...scope,
           }}
         />
-      </ActionContext.Provider>
+      </ActionContextProvider>
     </RecordProvider>
   );
 };

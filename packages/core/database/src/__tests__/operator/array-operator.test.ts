@@ -1,5 +1,14 @@
-import { mockDatabase } from '../index';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import Database from '../../database';
+import { mockDatabase } from '../index';
 
 describe('array field operator', function () {
   let db: Database;
@@ -14,6 +23,8 @@ describe('array field operator', function () {
 
   beforeEach(async () => {
     db = mockDatabase({});
+    await db.clean({ drop: true });
+
     Test = db.collection({
       name: 'test',
       fields: [
@@ -42,7 +53,7 @@ describe('array field operator', function () {
   test('array field update', async () => {
     const Post = db.collection({
       name: 'posts',
-      fields: [{ type: 'array', name: 'tags' }],
+      fields: [{ type: 'array', name: 'tagsFields' }],
     });
 
     await db.sync({ force: true });
@@ -50,13 +61,13 @@ describe('array field operator', function () {
     await Post.repository.create({});
     const p1 = await Post.repository.create({
       values: {
-        tags: ['t1', 't2'],
+        tagsFields: ['t1', 't2'],
       },
     });
 
     let result = await Post.repository.findOne({
       filter: {
-        'tags.$match': ['t2', 't1'],
+        'tagsFields.$match': ['t2', 't1'],
       },
     });
 
@@ -65,13 +76,13 @@ describe('array field operator', function () {
     await Post.repository.update({
       filterByTk: <any>p1.get('id'),
       values: {
-        tags: ['t3', 't2'],
+        tagsFields: ['t3', 't2'],
       },
     });
 
     result = await Post.repository.findOne({
       filter: {
-        'tags.$match': ['t3', 't2'],
+        'tagsFields.$match': ['t3', 't2'],
       },
     });
 
@@ -193,6 +204,49 @@ describe('array field operator', function () {
     expect(filter3[0].get('name')).toEqual(t2.get('name'));
   });
 
+  test('$anyOf with association with same column name', async () => {
+    const Tag = db.collection({
+      name: 'tags',
+      fields: [
+        { type: 'array', name: 'type' },
+        { type: 'string', name: 'name' },
+      ],
+    });
+
+    const Post = db.collection({
+      name: 'posts',
+      tableName: 'posts_table',
+      fields: [
+        { type: 'array', name: 'type' },
+        {
+          type: 'hasMany',
+          name: 'tags',
+        },
+      ],
+    });
+
+    await db.sync({ force: true });
+
+    await Post.repository.find({
+      filter: {
+        'type.$anyOf': ['aa'],
+        'tags.name': 't1',
+      },
+    });
+  });
+
+  // fix https://nocobase.height.app/T-2803
+  test('$anyOf with string', async () => {
+    const filter3 = await Test.repository.find({
+      filter: {
+        'selected.$anyOf': 'aa',
+      },
+    });
+
+    expect(filter3.length).toEqual(1);
+    expect(filter3[0].get('name')).toEqual(t2.get('name'));
+  });
+
   test('$anyOf with multiple items', async () => {
     const filter3 = await Test.repository.find({
       filter: {
@@ -207,6 +261,18 @@ describe('array field operator', function () {
     const filter = await Test.repository.find({
       filter: {
         'selected.$noneOf': ['aa'],
+      },
+    });
+
+    expect(filter.length).toEqual(1);
+    expect(filter[0].get('name')).toEqual(t1.get('name'));
+  });
+
+  // fix https://nocobase.height.app/T-2803
+  test('$noneOf with string', async () => {
+    const filter = await Test.repository.find({
+      filter: {
+        'selected.$noneOf': 'aa',
       },
     });
 

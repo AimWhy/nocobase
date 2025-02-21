@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import lodash from 'lodash';
 import { SequelizeHooks } from 'sequelize/types/hooks';
 
@@ -15,7 +24,7 @@ export class ModelHook {
     this.database = database;
   }
 
-  match(event: string | Symbol): keyof SequelizeHooks | null {
+  match(event: string | symbol): keyof SequelizeHooks | null {
     // NOTE: skip Symbol event
     if (!lodash.isString(event)) {
       return null;
@@ -27,7 +36,10 @@ export class ModelHook {
   }
 
   findModelName(hookArgs) {
-    for (const arg of hookArgs) {
+    for (let arg of hookArgs) {
+      if (Array.isArray(arg)) {
+        arg = arg[0];
+      }
       if (arg?._previousDataValues) {
         return (<Model>arg).constructor.name;
       }
@@ -35,13 +47,10 @@ export class ModelHook {
         if (arg['model']) {
           return arg['model'].name;
         }
-        const plural = arg?.name?.plural;
-        if (this.database.sequelize.isDefined(plural)) {
-          return plural;
-        }
-        const singular = arg?.name?.singular;
-        if (this.database.sequelize.isDefined(singular)) {
-          return singular;
+
+        const modelName = arg['modelName'];
+        if (this.database.sequelize.isDefined(modelName)) {
+          return modelName;
         }
       }
     }

@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import cronstrue from 'cronstrue';
 
 class CronstrueLocale {
@@ -164,7 +173,9 @@ class CronstrueLocale {
 }
 
 export const loadConstrueLocale = (data) => {
-  cronstrue.initialize({
+  // vite bug: https://github.com/vitejs/vite/issues/2139
+  const cronstrueVal = (cronstrue as any).default ? (cronstrue as any).default : cronstrue;
+  cronstrueVal.initialize({
     load(availableLocales) {
       availableLocales[data?.lang] = new CronstrueLocale(data?.cronstrue);
     },

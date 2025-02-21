@@ -1,9 +1,11 @@
+
+
 /**
  * title: Menu
  */
-import React from 'react';
-import { Menu, SchemaComponent, SchemaComponentProvider } from '@nocobase/client';
 import { ISchema } from '@formily/react';
+import { Application, Menu, SchemaComponent, SchemaComponentProvider } from '@nocobase/client';
+import React from 'react';
 
 const schema: ISchema = {
   type: 'object',
@@ -13,7 +15,7 @@ const schema: ISchema = {
       'x-component': 'Menu',
       'x-component-props': {
         mode: 'inline',
-        defaultSelectedUid: 'u8',
+        defaultSelectedUid: 'u1',
         style: {
           width: 260,
         },
@@ -84,10 +86,16 @@ const schema: ISchema = {
   },
 };
 
-export default () => {
+const Root = () => {
   return (
     <SchemaComponentProvider components={{ Menu }}>
       <SchemaComponent schema={schema} />
     </SchemaComponentProvider>
   );
 };
+
+const app = new Application({
+  providers: [Root],
+});
+
+export default app.getRootComponent();

@@ -1,15 +1,44 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+/* istanbul ignore file -- @preserve */
+
 import Application from '../application';
+import createMigration from './create-migration';
+import dbAuth from './db-auth';
+import dbClean from './db-clean';
+import dbSync from './db-sync';
+import destroy from './destroy';
+import install from './install';
+import pm from './pm';
+import refresh from './refresh';
+import restart from './restart';
+import start from './start';
+import stop from './stop';
+import upgrade from './upgrade';
+import consoleCommand from './console';
 
 export function registerCli(app: Application) {
-  require('./console').default(app);
-  require('./db-auth').default(app);
-  require('./db-clean').default(app);
-  require('./db-sync').default(app);
-  require('./install').default(app);
-  require('./migrator').default(app);
-  require('./start').default(app);
-  require('./upgrade').default(app);
-  require('./pm').default(app);
+  consoleCommand(app);
+  dbAuth(app);
+  createMigration(app);
+  dbClean(app);
+  dbSync(app);
+  install(app);
+  // migrator(app);
+  upgrade(app);
+  pm(app);
+  restart(app);
+  stop(app);
+  destroy(app);
+  start(app);
+  refresh(app);
 
   // development only with @nocobase/cli
   app.command('build').argument('[packages...]');

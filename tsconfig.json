@@ -1,4 +1,5 @@
 {
+  "extends": "./tsconfig.paths.json",
   "compilerOptions": {
     "esModuleInterop": true,
     "moduleResolution": "node",
@@ -9,40 +10,27 @@
     "noUnusedLocals": false,
     "preserveConstEnums": true,
     "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
     "sourceMap": true,
     "inlineSources": true,
     "resolveJsonModule": true,
     "declaration": true,
     "experimentalDecorators": true,
     "downlevelIteration": true,
-    "baseUrl": ".",
-    "paths": {
-      "@nocobase/app-*": [
-        "packages/app/*/src"
-      ],
-      "@nocobase/plugin-sample-*": [
-        "packages/samples/*/src"
-      ],
-      "@nocobase/plugin-pro-*": [
-        "packages/pro-plugins/*/src"
-      ],
-      "@nocobase/plugin-*": [
-        "packages/plugins/*/src"
-      ],
-      "@nocobase/preset-*": [
-        "packages/presets/*/src"
-      ],
-      "@nocobase/utils/client": [
-        "packages/core/utils/src/client"
-      ],
-      "@nocobase/*": [
-        "packages/core/*/src"
-      ]
-    }
+    "baseUrl": "."
   },
   "ts-node": {
     "compilerOptions": {
       "module": "commonjs"
     }
-  }
+  },
+  "include": [".dumi/**/*", ".dumirc.ts", "packages/**/*", "playwright.config.ts", "vitest.config.mts"],
+  "exclude": [
+    "packages/**/node_modules",
+    "packages/**/dist",
+    "packages/**/public",
+    "packages/core/build/bin",
+    "packages/**/lib",
+    "packages/**/es"
+  ]
 }

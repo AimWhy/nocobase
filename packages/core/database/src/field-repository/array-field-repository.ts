@@ -1,6 +1,15 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import lodash from 'lodash';
 import { Transactionable } from 'sequelize/types';
 import { Collection } from '../collection';
-import lodash from 'lodash';
 import { transactionWrapperBuilder } from '../decorators/transaction-decorator';
 import { ArrayField } from '../fields';
 
@@ -9,7 +18,11 @@ const transaction = transactionWrapperBuilder(function () {
 });
 
 export class ArrayFieldRepository {
-  constructor(protected collection: Collection, protected fieldName: string, protected targetValue: string | number) {
+  constructor(
+    protected collection: Collection,
+    protected fieldName: string,
+    protected targetValue: string | number,
+  ) {
     const field = collection.getField(fieldName);
     if (!(field instanceof ArrayField)) {
       throw new Error('Field must be of type Array');

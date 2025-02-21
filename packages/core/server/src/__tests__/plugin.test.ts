@@ -1,70 +1,31 @@
-import { Application } from '../application';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import { vi } from 'vitest';
+import { mockServer, MockServer } from '@nocobase/test';
 import { Plugin } from '../plugin';
 import Plugin1 from './plugins/plugin1';
 import Plugin2 from './plugins/plugin2';
 import Plugin3 from './plugins/plugin3';
-import { mockServer, MockServer } from '@nocobase/test';
 
 describe('plugin', () => {
   let app: MockServer;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     app = mockServer();
+    await app.db.clean({ drop: true });
+
+    await app.db.sync();
   });
 
   afterEach(async () => {
     await app.destroy();
-  });
-
-  describe('define', () => {
-    it('should add plugin with options', async () => {
-      class MyPlugin extends Plugin {
-        getName(): string {
-          return 'test';
-        }
-      }
-
-      const plugin = app.plugin(MyPlugin, {
-        test: 'hello',
-      });
-
-      expect(plugin.options['test']).toEqual('hello');
-    });
-
-    it('plugin name', async () => {
-      interface Options {
-        a?: string;
-      }
-      class MyPlugin extends Plugin<Options> {
-        async load() {
-          this.options.a;
-        }
-
-        getName(): string {
-          return 'MyPlugin';
-        }
-      }
-      const plugin = app.plugin<Options>(MyPlugin, {
-        a: 'aa',
-      });
-      plugin.setOptions({
-        a: 'a',
-      });
-      expect(plugin).toBeInstanceOf(MyPlugin);
-      expect(plugin.getName()).toBe('MyPlugin');
-    });
-
-    it('plugin name', async () => {
-      const plugin = app.plugin(Plugin1);
-      expect(plugin).toBeInstanceOf(Plugin);
-      expect(plugin.getName()).toBe('Plugin1');
-    });
-
-    it('plugin name', async () => {
-      const plugin = app.plugin(Plugin3);
-      expect(plugin).toBeInstanceOf(Plugin3);
-      expect(plugin.getName()).toBe('Plugin3');
-    });
   });
 
   describe('load', () => {
@@ -106,6 +67,22 @@ describe('plugin', () => {
       await app.load();
       const Test = app.db.getCollection('tests');
       expect(Test).toBeDefined();
+    });
+  });
+
+  describe.skip('enable', function () {
+    it('should call beforeEnable', async () => {
+      const beforeEnable = vi.fn();
+
+      class TestPlugin extends Plugin {
+        async beforeEnable() {
+          beforeEnable();
+        }
+      }
+
+      app.plugin(TestPlugin);
+      await app.pm.enable('TestPlugin');
+      expect(beforeEnable).toBeCalled();
     });
   });
 });

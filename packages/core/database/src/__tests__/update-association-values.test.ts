@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { Database } from '../database';
 import { mockDatabase } from './';
 
@@ -10,6 +19,72 @@ describe('update associations', () => {
 
   afterEach(async () => {
     await db.close();
+  });
+
+  it('should update associations with target key', async () => {
+    const T1 = db.collection({
+      name: 'test1',
+      autoGenId: false,
+      timestamps: false,
+      filterTargetKey: 'id_',
+      fields: [
+        {
+          name: 'id_',
+          type: 'string',
+        },
+        {
+          type: 'hasMany',
+          name: 't2',
+          foreignKey: 'nvarchar2',
+          targetKey: 'varchar_',
+          sourceKey: 'id_',
+          target: 'test2',
+        },
+      ],
+    });
+
+    const T2 = db.collection({
+      name: 'test2',
+      autoGenId: false,
+      timestamps: false,
+      filterTargetKey: 'varchar_',
+      fields: [
+        {
+          name: 'varchar_',
+          type: 'string',
+          unique: true,
+        },
+        {
+          name: 'nvarchar2',
+          type: 'string',
+        },
+      ],
+    });
+
+    await db.sync();
+
+    const t2 = await T2.repository.create({
+      values: {
+        varchar_: '1',
+      },
+    });
+
+    await T1.repository.create({
+      values: {
+        id_: 1,
+        t2: [
+          {
+            varchar_: '1',
+          },
+        ],
+      },
+    });
+
+    const t1 = await T1.repository.findOne({
+      appends: ['t2'],
+    });
+
+    expect(t1['t2'][0]['varchar_']).toBe('1');
   });
 
   it('hasOne', async () => {

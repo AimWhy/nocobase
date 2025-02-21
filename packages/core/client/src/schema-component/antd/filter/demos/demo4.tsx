@@ -1,7 +1,9 @@
+
+
 import { ISchema } from '@formily/react';
 import {
   AntdSchemaComponentProvider,
-  SharedFilter,
+  Filter,
   Input,
   SchemaComponent,
   SchemaComponentProvider,
@@ -78,12 +80,12 @@ const defaultValue = {
   $or: [
     {
       name: {
-        $ne: '{{node1.field1}}',
+        $ne: 'aaa',
       },
     },
     {
       'tags.title': {
-        $eq: 'aaa',
+        $eq: 'bbb',
       },
     },
   ],

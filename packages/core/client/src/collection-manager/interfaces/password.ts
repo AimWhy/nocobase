@@ -1,29 +1,37 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import { CollectionFieldInterface } from '../../data-source/collection-field-interface/CollectionFieldInterface';
 import { i18n } from '../../i18n';
 import { defaultProps, unique } from './properties';
-import { IField } from './types';
 
-export const password: IField = {
-  name: 'password',
-  type: 'object',
-  group: 'basic',
-  order: 7,
-  title: '{{t("Password")}}',
-  default: {
+export class PasswordFieldInterface extends CollectionFieldInterface {
+  name = 'password';
+  type = 'object';
+  group = 'basic';
+  order = 9;
+  title = '{{t("Password")}}';
+  default = {
     type: 'password',
     hidden: true,
-    // name,
     uiSchema: {
       type: 'string',
-      // title,
       'x-component': 'Password',
     },
-  },
-  hasDefaultValue: true,
-  properties: {
+  };
+  availableTypes = ['password', 'string'];
+  hasDefaultValue = true;
+  properties = {
     ...defaultProps,
     unique,
-  },
-  validateSchema(fieldSchema) {
+  };
+  validateSchema = (fieldSchema) => {
     return {
       max: {
         type: 'number',
@@ -32,12 +40,14 @@ export const password: IField = {
         'x-decorator': 'FormItem',
         'x-component': 'InputNumber',
         'x-component-props': {
-          precision: 0
+          precision: 0,
         },
         'x-reactions': `{{(field) => {
           const targetValue = field.query('.min').value();
           field.selfErrors =
-            !!targetValue && !!field.value && targetValue > field.value ? '${i18n.t('Max length must greater than min length')}' : ''
+            !!targetValue && !!field.value && targetValue > field.value ? '${i18n.t(
+              'Max length must greater than min length',
+            )}' : ''
         }}}`,
       },
       min: {
@@ -47,17 +57,19 @@ export const password: IField = {
         'x-decorator': 'FormItem',
         'x-component': 'InputNumber',
         'x-component-props': {
-          precision: 0
+          precision: 0,
         },
         'x-reactions': {
           dependencies: ['.max'],
           fulfill: {
             state: {
-              selfErrors: `{{!!$deps[0] && !!$self.value && $deps[0] < $self.value ? '${i18n.t('Min length must less than max length')}' : ''}}`,
+              selfErrors: `{{!!$deps[0] && !!$self.value && $deps[0] < $self.value ? '${i18n.t(
+                'Min length must less than max length',
+              )}' : ''}}`,
             },
           },
         },
       },
     };
-  }
-};
+  };
+}

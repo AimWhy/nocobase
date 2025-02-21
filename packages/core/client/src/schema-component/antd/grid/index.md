@@ -1,14 +1,20 @@
----
-nav:
-  path: /client
-group:
-  path: /schema-components
----
-
 # Grid
 
-<code src="./demos/demo1.tsx" />
+Grid 布局组件。
 
-<code src="./demos/demo2.tsx" />
+```ts
+interface GridProps {
+  showDivider?: boolean;
+  dndContext?: false | DndContextProps;
+}
+```
 
-<code src="./demos/demo3.tsx" />
+`Grid` 组件需要配合 `Grid.Row`、`Grid.Col` 使用。
+
+## Basic Usage
+
+<code src="./demos/new-demos/basic.tsx"></code>
+
+## With Form
+
+Demo [GridLayout](/components/form-v2#grid-layout)

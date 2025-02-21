@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { Collection } from '../collection';
 import { Database } from '../database';
 import { mockDatabase } from './index';
@@ -8,9 +17,7 @@ describe('collection', () => {
   let db: Database;
 
   beforeEach(async () => {
-    db = mockDatabase({
-      logging: console.log,
-    });
+    db = mockDatabase();
 
     await db.clean({ drop: true });
   });
@@ -19,8 +26,27 @@ describe('collection', () => {
     await db.close();
   });
 
+  it('should remove sequelize model prototype methods after field remove', async () => {
+    db.collection({
+      name: 'tags',
+    });
+
+    const UserCollection = db.collection({
+      name: 'users',
+      fields: [{ type: 'belongsToMany', name: 'tags' }],
+    });
+
+    console.log(Object.getOwnPropertyNames(UserCollection.model.prototype));
+
+    await UserCollection.removeField('tags');
+
+    console.log(Object.getOwnPropertyNames(UserCollection.model.prototype));
+    // @ts-ignore
+    expect(UserCollection.model.prototype.getTags).toBeUndefined();
+  });
+
   it('should not throw error when create empty collection in sqlite and mysql', async () => {
-    if (!db.inDialect('sqlite', 'mysql')) {
+    if (!db.inDialect('sqlite', 'mysql', 'mariadb')) {
       return;
     }
 
@@ -66,7 +92,6 @@ describe('collection', () => {
   });
 
   test('removeFromDb', async () => {
-    await db.clean({ drop: true });
     const collection = db.collection({
       name: 'test',
       fields: [
@@ -81,7 +106,7 @@ describe('collection', () => {
     const field = collection.getField('name');
     const r1 = await field.existsInDb();
     expect(r1).toBe(true);
-    await field.removeFromDb();
+    await collection.removeFieldFromDb('name');
     const r2 = await field.existsInDb();
     expect(r2).toBe(false);
 
@@ -90,6 +115,30 @@ describe('collection', () => {
     await collection.removeFromDb();
     const r4 = await collection.existsInDb();
     expect(r4).toBe(false);
+  });
+
+  test('remove from db with cascade', async () => {
+    const testCollection = db.collection({
+      name: 'test',
+      fields: [
+        {
+          type: 'string',
+          name: 'name',
+        },
+      ],
+    });
+
+    await db.sync();
+
+    const viewName = `test_view`;
+    const viewSQL = `create view ${viewName} as select * from ${testCollection.getTableNameWithSchemaAsString()}`;
+    await db.sequelize.query(viewSQL);
+
+    await expect(
+      testCollection.removeFromDb({
+        cascade: true,
+      }),
+    ).resolves.toBeTruthy();
   });
 
   test('collection disable authGenId', async () => {
@@ -217,6 +266,7 @@ describe('collection sync', () => {
 
   beforeEach(async () => {
     db = mockDatabase();
+    await db.clean({ drop: true });
   });
 
   afterEach(async () => {
@@ -240,9 +290,15 @@ describe('collection sync', () => {
     await collection.sync();
     const tableFields = await (<any>collection.model).queryInterface.describeTable(`${db.getTablePrefix()}users`);
 
-    expect(tableFields).toHaveProperty('firstName');
-    expect(tableFields).toHaveProperty('lastName');
-    expect(tableFields).toHaveProperty('age');
+    if (db.options.underscored) {
+      expect(tableFields).toHaveProperty('first_name');
+      expect(tableFields).toHaveProperty('last_name');
+      expect(tableFields).toHaveProperty('age');
+    } else {
+      expect(tableFields).toHaveProperty('firstName');
+      expect(tableFields).toHaveProperty('lastName');
+      expect(tableFields).toHaveProperty('age');
+    }
   });
 
   test('sync with association not exists', async () => {
@@ -290,9 +346,16 @@ describe('collection sync', () => {
 
     const model = collection.model;
     await collection.sync();
-    const tableFields = await (<any>model).queryInterface.describeTable(`${db.getTablePrefix()}postsTags`);
-    expect(tableFields['postId']).toBeDefined();
-    expect(tableFields['tagId']).toBeDefined();
+
+    if (db.options.underscored) {
+      const tableFields = await (<any>model).queryInterface.describeTable(`${db.getTablePrefix()}posts_tags`);
+      expect(tableFields['post_id']).toBeDefined();
+      expect(tableFields['tag_id']).toBeDefined();
+    } else {
+      const tableFields = await (<any>model).queryInterface.describeTable(`${db.getTablePrefix()}postsTags`);
+      expect(tableFields['postId']).toBeDefined();
+      expect(tableFields['tagId']).toBeDefined();
+    }
   });
 
   test('limit table name length', async () => {
@@ -316,6 +379,50 @@ describe('collection sync', () => {
     }
 
     expect(error).toBeInstanceOf(IdentifierError);
+  });
+
+  it('should throw error when collection has same table name and same schema', async () => {
+    const c1 = db.collection({
+      name: 'test',
+      tableName: 'test',
+      schema: 'public',
+    });
+
+    let err;
+
+    try {
+      const c2 = db.collection({
+        name: 'test2',
+        tableName: 'test',
+        schema: 'public',
+      });
+    } catch (e) {
+      err = e;
+    }
+
+    expect(err.message).toContain('have same tableName');
+  });
+
+  it('should allow same table name in difference schema', async () => {
+    const c1 = db.collection({
+      name: 'test',
+      tableName: 'test',
+      schema: 'public',
+    });
+
+    let err;
+
+    try {
+      const c2 = db.collection({
+        name: 'test2',
+        tableName: 'test',
+        schema: 'other_schema',
+      });
+    } catch (e) {
+      err = e;
+    }
+
+    expect(err).toBeFalsy();
   });
 
   test('limit field name length', async () => {

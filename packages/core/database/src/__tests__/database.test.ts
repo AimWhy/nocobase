@@ -1,3 +1,13 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import { vi } from 'vitest';
 import path from 'path';
 import { Database, Model } from '..';
 import { ArrayFieldRepository } from '../field-repository/array-field-repository';
@@ -8,6 +18,7 @@ describe('database', () => {
 
   beforeEach(async () => {
     db = mockDatabase();
+    await db.clean({ drop: true });
   });
 
   afterEach(async () => {
@@ -101,7 +112,7 @@ describe('database', () => {
   });
 
   test('collection beforeBulkCreate event', async () => {
-    const listener = jest.fn();
+    const listener = vi.fn();
 
     db.on('posts.beforeBulkUpdate', listener);
 
@@ -132,8 +143,8 @@ describe('database', () => {
   });
 
   test('global model event', async () => {
-    const listener = jest.fn();
-    const listener2 = jest.fn();
+    const listener = vi.fn();
+    const listener2 = vi.fn();
 
     const Post = db.collection({
       name: 'posts',
@@ -156,8 +167,8 @@ describe('database', () => {
   });
 
   test('collection multiple model event', async () => {
-    const listener = jest.fn();
-    const listener2 = jest.fn();
+    const listener = vi.fn();
+    const listener2 = vi.fn();
 
     const Post = db.collection({
       name: 'posts',
@@ -180,7 +191,7 @@ describe('database', () => {
   });
 
   test('collection afterCreate model event', async () => {
-    const postAfterCreateListener = jest.fn();
+    const postAfterCreateListener = vi.fn();
 
     db.on('posts.afterCreate', postAfterCreateListener);
 
@@ -203,7 +214,7 @@ describe('database', () => {
   });
 
   test('collection event', async () => {
-    const listener = jest.fn();
+    const listener = vi.fn();
     db.on('beforeDefineCollection', listener);
 
     const Post = db.collection({
@@ -220,7 +231,7 @@ describe('database', () => {
       fields: [{ type: 'string', name: 'title' }],
     });
 
-    const postAfterCreateListener = jest.fn();
+    const postAfterCreateListener = vi.fn();
 
     db.on('posts.afterCreate', postAfterCreateListener);
 
@@ -243,7 +254,7 @@ describe('database', () => {
       fields: [{ type: 'string', name: 'title' }],
     });
 
-    const postAfterCreateListener = jest.fn();
+    const postAfterCreateListener = vi.fn();
 
     db.on('posts.afterCreate', postAfterCreateListener);
     db.on('afterCreate', postAfterCreateListener);
@@ -284,5 +295,37 @@ describe('database', () => {
     expect(test).toBeInstanceOf(CustomModel);
     test.customMethod();
     expect(test.get('abc')).toBe('abc');
+  });
+
+  test('getFieldByPath', () => {
+    db.collection({
+      name: 'users',
+      fields: [{ type: 'hasMany', name: 'p', target: 'posts' }],
+    });
+    db.collection({
+      name: 'comments',
+      fields: [{ type: 'string', name: 'title' }],
+    });
+    db.collection({
+      name: 'posts',
+      fields: [
+        { type: 'hasMany', name: 'c', target: 'comments' },
+        { type: 'belongsToMany', name: 't', target: 'tags' },
+      ],
+    });
+    db.collection({
+      name: 'tags',
+      fields: [{ type: 'string', name: 'title' }],
+    });
+    const f1 = db.getFieldByPath('users.p.t');
+    const f2 = db.getFieldByPath('users.p.c');
+    const f3 = db.getFieldByPath('users.p');
+    expect(f1.name).toBe('t');
+    expect(f2.name).toBe('c');
+    expect(f3.name).toBe('p');
+    expect(db.getFieldByPath('users.d')).toBeNull;
+    expect(db.getFieldByPath('users.d.e')).toBeNull;
+    expect(db.getFieldByPath('users.p.f')).toBeNull;
+    expect(db.getFieldByPath('users.p.c.j')).toBeNull;
   });
 });

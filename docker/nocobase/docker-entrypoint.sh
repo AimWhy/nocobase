@@ -1,8 +1,9 @@
 #!/bin/sh
 set -e
 
-nginx
-echo 'nginx started';
+echo "COMMIT_HASH: $(cat /app/commit_hash.txt)"
+
+export NOCOBASE_RUNNING_IN_DOCKER=true
 
 if [ ! -d "/app/nocobase" ]; then
   mkdir nocobase
@@ -11,6 +12,22 @@ fi
 if [ ! -f "/app/nocobase/package.json" ]; then
   echo 'copying...'
   tar -zxf /app/nocobase.tar.gz --absolute-names -C /app/nocobase
+  touch /app/nocobase/node_modules/@nocobase/app/dist/client/index.html
+fi
+
+cd /app/nocobase && yarn nocobase create-nginx-conf
+rm -rf /etc/nginx/sites-enabled/nocobase.conf
+ln -s /app/nocobase/storage/nocobase.conf /etc/nginx/sites-enabled/nocobase.conf
+
+nginx
+echo 'nginx started';
+
+# run scripts in storage/scripts
+if [ -d "/app/nocobase/storage/scripts" ]; then
+  for f in /app/nocobase/storage/scripts/*.sh; do
+    echo "Running $f"
+    sh "$f"
+  done
 fi
 
 cd /app/nocobase && yarn start --quickstart

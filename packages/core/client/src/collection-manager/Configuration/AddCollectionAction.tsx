@@ -1,21 +1,30 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { DownOutlined, PlusOutlined } from '@ant-design/icons';
-import { ArrayTable } from '@formily/antd';
-import { ISchema, useForm } from '@formily/react';
+import { ArrayTable } from '@formily/antd-v5';
+import { ISchema, useField, useForm } from '@formily/react';
 import { uid } from '@formily/shared';
-import { Button, Dropdown, Menu } from 'antd';
+import { Button, Dropdown, MenuProps } from 'antd';
 import { cloneDeep } from 'lodash';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useRequest } from '../../api-client';
 import { RecordProvider, useRecord } from '../../record-provider';
-import { ActionContext, SchemaComponent, useActionContext, useCompile } from '../../schema-component';
-import { useCancelAction } from '../action-hooks';
-import { useCollectionManager } from '../hooks';
+import { ActionContextProvider, SchemaComponent, useActionContext, useCompile } from '../../schema-component';
 import { useResourceActionContext, useResourceContext } from '../ResourceActionProvider';
+import { useCancelAction } from '../action-hooks';
+import { useCollectionManager_deprecated } from '../hooks';
 import * as components from './components';
-import { templateOptions } from './templates';
+import { TemplateSummary } from './components/TemplateSummary';
 
-const getSchema = (schema, record: any, compile): ISchema => {
+const getSchema = (schema, category, compile): ISchema => {
   if (!schema) {
     return;
   }
@@ -30,6 +39,8 @@ const getSchema = (schema, record: any, compile): ISchema => {
   const initialValue: any = {
     name: `t_${uid()}`,
     template: schema.name,
+    view: schema.name === 'view',
+    category,
     ...cloneDeep(schema.default),
   };
   if (initialValue.reverseField) {
@@ -60,7 +71,7 @@ const getSchema = (schema, record: any, compile): ISchema => {
         properties: {
           summary: {
             type: 'void',
-            'x-component': 'FieldSummary',
+            'x-component': 'TemplateSummay',
             'x-component-props': {
               schemaKey: schema.name,
             },
@@ -83,7 +94,7 @@ const getSchema = (schema, record: any, compile): ISchema => {
                 'x-component': 'Action',
                 'x-component-props': {
                   type: 'primary',
-                  useAction: () => useCreateCollection(),
+                  useAction: () => useCreateCollection(schema),
                 },
               },
             },
@@ -94,168 +105,95 @@ const getSchema = (schema, record: any, compile): ISchema => {
   };
 };
 
-const useDefaultCollectionFields = (values) => {
-  let defaults = values.fields ? [...values.fields] : [];
-  const { autoGenId = true, createdAt = true, createdBy = true, updatedAt = true, updatedBy = true } = values;
-  if (autoGenId) {
-    const pk = values.fields.find((f) => f.primaryKey);
-    if (!pk) {
-      defaults.push({
-        name: 'id',
-        type: 'bigInt',
-        autoIncrement: true,
-        primaryKey: true,
-        allowNull: false,
-        uiSchema: { type: 'number', title: '{{t("ID")}}', 'x-component': 'InputNumber', 'x-read-pretty': true },
-        interface: 'id',
-      });
-    }
-  }
-  if (createdAt) {
-    defaults.push({
-      name: 'createdAt',
-      interface: 'createdAt',
-      type: 'date',
-      field: 'createdAt',
-      uiSchema: {
-        type: 'datetime',
-        title: '{{t("Created at")}}',
-        'x-component': 'DatePicker',
-        'x-component-props': {},
-        'x-read-pretty': true,
-      },
-    });
-  }
-  if (createdBy) {
-    defaults.push({
-      name: 'createdBy',
-      interface: 'createdBy',
-      type: 'belongsTo',
-      target: 'users',
-      foreignKey: 'createdById',
-      uiSchema: {
-        type: 'object',
-        title: '{{t("Created by")}}',
-        'x-component': 'RecordPicker',
-        'x-component-props': {
-          fieldNames: {
-            value: 'id',
-            label: 'nickname',
-          },
-        },
-        'x-read-pretty': true,
-      },
-    });
-  }
-  if (updatedAt) {
-    defaults.push({
-      type: 'date',
-      field: 'updatedAt',
-      name: 'updatedAt',
-      interface: 'updatedAt',
-      uiSchema: {
-        type: 'string',
-        title: '{{t("Last updated at")}}',
-        'x-component': 'DatePicker',
-        'x-component-props': {},
-        'x-read-pretty': true,
-      },
-    });
-  }
-  if (updatedBy) {
-    defaults.push({
-      type: 'belongsTo',
-      target: 'users',
-      foreignKey: 'updatedById',
-      name: 'updatedBy',
-      interface: 'updatedBy',
-      uiSchema: {
-        type: 'object',
-        title: '{{t("Last updated by")}}',
-        'x-component': 'RecordPicker',
-        'x-component-props': {
-          fieldNames: {
-            value: 'id',
-            label: 'nickname',
-          },
-        },
-        'x-read-pretty': true,
-      },
-    });
-  }
-  // 其他
-  return defaults;
-};
-
-const useCreateCollection = () => {
+const useCreateCollection = (schema?: any) => {
   const form = useForm();
-  const { refreshCM } = useCollectionManager();
+  const { refreshCM } = useCollectionManager_deprecated();
   const ctx = useActionContext();
   const { refresh } = useResourceActionContext();
   const { resource } = useResourceContext();
+  const field = useField();
   return {
     async run() {
-      await form.submit();
-      const values = cloneDeep(form.values);
-      const fields = useDefaultCollectionFields(values);
-      if (values.autoCreateReverseField) {
-      } else {
-        delete values.reverseField;
+      field.data = field.data || {};
+      field.data.loading = true;
+      try {
+        await form.submit();
+        const values = cloneDeep(form.values);
+        if (schema?.events?.beforeSubmit) {
+          schema.events.beforeSubmit(values);
+        }
+        if (!values.autoCreateReverseField) {
+          delete values.reverseField;
+        }
+        delete values.autoCreateReverseField;
+        await resource.create({
+          values: {
+            logging: true,
+            ...values,
+          },
+        });
+        ctx.setVisible(false);
+        await form.reset();
+        field.data.loading = false;
+        refresh();
+        await refreshCM();
+      } catch (error) {
+        field.data.loading = false;
       }
-      delete values.id;
-      delete values.autoCreateReverseField;
-      await resource.create({
-        values: {
-          logging: true,
-          ...values,
-          fields,
-        },
-      });
-      ctx.setVisible(false);
-      await form.reset();
-      refresh();
-      await refreshCM();
     },
   };
 };
 
 export const AddCollection = (props) => {
-  const record = useRecord();
-  return <AddCollectionAction item={record} {...props} />;
+  const recordData = useRecord();
+  return <AddCollectionAction item={recordData} {...props} />;
 };
 
 export const AddCollectionAction = (props) => {
   const { scope, getContainer, item: record, children, trigger, align } = props;
-  const { getTemplate } = useCollectionManager();
+  const { getTemplate, templates: collectionTemplates } = useCollectionManager_deprecated();
   const [visible, setVisible] = useState(false);
   const [schema, setSchema] = useState({});
+  const [currentTemplate, setCurrentTemplate] = useState(null);
   const compile = useCompile();
   const { t } = useTranslation();
-  const items = templateOptions().map((option) => {
-    return { label: compile(option.title), key: option.name };
-  });
+  const items = useMemo(() => {
+    const result = [];
+    collectionTemplates.forEach((item) => {
+      if (item.divider) {
+        result.push({
+          type: 'divider',
+        });
+      }
+      result.push({
+        label: compile(item.title),
+        key: item.name,
+      });
+    });
+    return result;
+  }, [collectionTemplates]);
+  const {
+    state: { category },
+  } = useResourceActionContext();
+  const menu = useMemo<MenuProps>(() => {
+    return {
+      style: {
+        maxHeight: '60vh',
+        overflow: 'auto',
+      },
+      onClick: (info) => {
+        const schema = getSchema(getTemplate(info.key), category, compile);
+        setCurrentTemplate(getTemplate(info.key));
+        setSchema(schema);
+        setVisible(true);
+      },
+      items,
+    };
+  }, [category, items]);
   return (
     <RecordProvider record={record}>
-      <ActionContext.Provider value={{ visible, setVisible }}>
-        <Dropdown
-          getPopupContainer={getContainer}
-          trigger={trigger}
-          align={align}
-          overlay={
-            <Menu
-              style={{
-                maxHeight: '60vh',
-                overflow: 'auto',
-              }}
-              onClick={(info) => {
-                const schema = getSchema(getTemplate(info.key), record, compile);
-                setSchema(schema);
-                setVisible(true);
-              }}
-              items={items}
-            />
-          }
-        >
+      <ActionContextProvider value={{ visible, setVisible }}>
+        <Dropdown getPopupContainer={getContainer} trigger={trigger} align={align} menu={menu}>
           {children || (
             <Button icon={<PlusOutlined />} type={'primary'}>
               {t('Create collection')} <DownOutlined />
@@ -264,7 +202,7 @@ export const AddCollectionAction = (props) => {
         </Dropdown>
         <SchemaComponent
           schema={schema}
-          components={{ ...components, ArrayTable }}
+          components={{ ...components, ArrayTable, TemplateSummay: TemplateSummary }}
           scope={{
             getContainer,
             useCancelAction,
@@ -272,10 +210,12 @@ export const AddCollectionAction = (props) => {
             useCreateCollection,
             record,
             showReverseFieldConfig: true,
+            presetFieldsDisabled: currentTemplate?.presetFieldsDisabled,
+            presetFieldsDisabledIncludes: currentTemplate?.presetFieldsDisabledIncludes,
             ...scope,
           }}
         />
-      </ActionContext.Provider>
+      </ActionContextProvider>
     </RecordProvider>
   );
 };

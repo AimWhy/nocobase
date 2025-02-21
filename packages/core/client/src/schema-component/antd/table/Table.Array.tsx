@@ -1,28 +1,57 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { MenuOutlined } from '@ant-design/icons';
+import { TinyColor } from '@ctrl/tinycolor';
 import { css } from '@emotion/css';
 import { ArrayField, Field } from '@formily/core';
-import { observer, RecursionField, Schema, useField, useFieldSchema } from '@formily/react';
+import {
+  RecursionField,
+  Schema,
+  SchemaExpressionScopeContext,
+  observer,
+  useField,
+  useFieldSchema,
+} from '@formily/react';
 import { Table, TableColumnProps } from 'antd';
 import { default as classNames, default as cls } from 'classnames';
-import React, { useState } from 'react';
+import React, { useContext, useState } from 'react';
 import ReactDragListView from 'react-drag-listview';
 import { DndContext } from '../..';
-import { RecordIndexProvider, RecordProvider, useRequest, useSchemaInitializer } from '../../../';
+import {
+  RecordIndexProvider,
+  RecordProvider,
+  useCollectionParentRecordData,
+  useCollectionRecordData,
+  useRequest,
+  useSchemaInitializerRender,
+} from '../../../';
+import { useToken } from '../__builtins__';
 
 const isColumnComponent = (schema: Schema) => {
   return schema['x-component']?.endsWith('.Column') > -1;
 };
 
 const useTableColumns = () => {
-  const start = Date.now();
   const field = useField<ArrayField>();
   const schema = useFieldSchema();
-  const { exists, render } = useSchemaInitializer(schema['x-initializer']);
+  const { exists, render } = useSchemaInitializerRender(schema['x-initializer'], schema['x-initializer-props']);
+  const scope = useContext(SchemaExpressionScopeContext);
+  const parentRecordData = useCollectionParentRecordData();
+  const recordData = useCollectionRecordData();
+
   const columns = schema
     .reduceProperties((buf, s) => {
-      if (isColumnComponent(s)) {
+      if (isColumnComponent(s) && scope[s['x-visible'] as unknown as string] !== false) {
         return buf.concat([s]);
       }
+      return buf;
     }, [])
     .map((s: Schema) => {
       return {
@@ -31,11 +60,21 @@ const useTableColumns = () => {
         key: s.name,
         render: (v, record) => {
           const index = field.value?.indexOf(record);
-          // console.log((Date.now() - start) / 1000);
           return (
             <RecordIndexProvider index={index}>
-              <RecordProvider record={record}>
-                <RecursionField schema={s} name={record.__index || index} onlyRenderProperties />
+              {/* fix https://nocobase.height.app/T-3232/description */}
+              {/* 如果作为关系表格区块，则 parentRecordData 应该有值；如果作为普通表格使用（如数据源管理页面的表格）则应该使用 recordData，且 parentRecordData 为空 */}
+              <RecordProvider record={record} parent={parentRecordData || recordData}>
+                <span
+                  role="button"
+                  className={css`
+                    .ant-space-gap-col-small {
+                      column-gap: 10px;
+                    }
+                  `}
+                >
+                  <RecursionField schema={s} name={record.__index || index} onlyRenderProperties />
+                </span>
               </RecordProvider>
             </RecordIndexProvider>
           );
@@ -119,14 +158,14 @@ const useDefDataSource = (options, props) => {
   }, options);
 };
 
-const SortHandle = () => {
-  return <MenuOutlined className={'drag-handle'} style={{ cursor: 'grab' }} />;
+const SortHandle = (props) => {
+  return <MenuOutlined className={'drag-handle'} style={{ cursor: 'grab' }} {...props} />;
 };
 
 const TableIndex = (props) => {
-  const { index } = props;
+  const { index, ...otherProps } = props;
   return (
-    <div className={classNames('nb-table-index')} style={{ padding: '0 8px 0 16px' }}>
+    <div className={classNames('nb-table-index')} style={{ padding: '0 8px 0 16px' }} {...otherProps}>
       {index + 1}
     </div>
   );
@@ -138,68 +177,47 @@ const useDefAction = () => {
   };
 };
 
-export const TableArray: React.FC<any> = observer((props) => {
-  const field = useField<ArrayField>();
-  const columns = useTableColumns();
-  const {
-    dragSort = false,
-    showIndex = true,
-    useSelectedRowKeys = useDef,
-    useDataSource = useDefDataSource,
-    useAction = useDefAction,
-    onChange,
-    ...others
-  } = props;
-  const [selectedRowKeys, setSelectedRowKeys] = useSelectedRowKeys();
-  useDataSource({
-    onSuccess(data) {
-      field.value = data?.data || [];
-    },
-  });
-  const { move } = useAction();
-  const restProps = {
-    rowSelection: props.rowSelection
-      ? {
-          type: 'checkbox',
-          selectedRowKeys,
-          onChange(selectedRowKeys: any[]) {
-            setSelectedRowKeys(selectedRowKeys);
-          },
-          renderCell: (checked, record, index, originNode) => {
-            const current = props?.pagination?.current;
-            const pageSize = props?.pagination?.pageSize || 20;
-            if (current) {
-              index = index + (current - 1) * pageSize;
-            }
-            return (
-              <div
-                className={classNames(
-                  checked ? 'checked' : null,
-                  css`
-                    position: relative;
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-evenly;
-                    padding-right: 8px;
-                    .nb-table-index {
-                      opacity: 0;
-                    }
-                    &:not(.checked) {
-                      .nb-table-index {
-                        opacity: 1;
-                      }
-                    }
-                    &:hover {
-                      .nb-table-index {
-                        opacity: 0;
-                      }
-                      .nb-origin-node {
-                        display: block;
-                      }
-                    }
-                  `,
-                )}
-              >
+export const TableArray: React.FC<any> = observer(
+  (props) => {
+    const { token } = useToken();
+    const field = useField<ArrayField>();
+    const columns = useTableColumns();
+    const {
+      dragSort = false,
+      showIndex = true,
+      useSelectedRowKeys = useDef,
+      useDataSource = useDefDataSource,
+      useAction = useDefAction,
+      onChange,
+      ...others
+    } = props;
+    const [selectedRowKeys, setSelectedRowKeys] = useSelectedRowKeys();
+    useDataSource({
+      onSuccess(data) {
+        field.value = data?.data || [];
+      },
+    });
+    const { move } = useAction();
+    const restProps = {
+      rowSelection: props.rowSelection
+        ? {
+            type: 'checkbox',
+            selectedRowKeys,
+            onChange(selectedRowKeys: any[]) {
+              setSelectedRowKeys(selectedRowKeys);
+            },
+            getCheckboxProps: (record: any) => {
+              return {
+                'aria-label': `checkbox-${record.name}`,
+              };
+            },
+            renderCell: (checked, record, index, originNode) => {
+              const current = props?.pagination?.current;
+              const pageSize = props?.pagination?.pageSize || 20;
+              if (current) {
+                index = index + (current - 1) * pageSize;
+              }
+              return (
                 <div
                   className={classNames(
                     checked ? 'checked' : null,
@@ -208,70 +226,102 @@ export const TableArray: React.FC<any> = observer((props) => {
                       display: flex;
                       align-items: center;
                       justify-content: space-evenly;
-                    `,
-                  )}
-                >
-                  {dragSort && <SortHandle />}
-                  {showIndex && <TableIndex index={index} />}
-                </div>
-                <div
-                  className={classNames(
-                    'nb-origin-node',
-                    checked ? 'checked' : null,
-                    css`
-                      position: absolute;
-                      right: 50%;
-                      transform: translateX(50%);
+                      padding-right: 8px;
+                      .nb-table-index {
+                        opacity: 0;
+                      }
                       &:not(.checked) {
-                        display: none;
+                        .nb-table-index {
+                          opacity: 1;
+                        }
+                      }
+                      &:hover {
+                        .nb-table-index {
+                          opacity: 0;
+                        }
+                        .nb-origin-node {
+                          display: block;
+                        }
                       }
                     `,
                   )}
                 >
-                  {originNode}
+                  <div
+                    className={classNames(
+                      checked ? 'checked' : null,
+                      css`
+                        position: relative;
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-evenly;
+                      `,
+                    )}
+                  >
+                    {dragSort && <SortHandle role="button" aria-label={`sort-handle-${record?.name || index}`} />}
+                    {showIndex && (
+                      <TableIndex role="button" aria-label={`table-index-${record?.name || index}`} index={index} />
+                    )}
+                  </div>
+                  <div
+                    className={classNames(
+                      'nb-origin-node',
+                      checked ? 'checked' : null,
+                      css`
+                        position: absolute;
+                        right: 50%;
+                        transform: translateX(50%);
+                        &:not(.checked) {
+                          display: none;
+                        }
+                      `,
+                    )}
+                  >
+                    {originNode}
+                  </div>
                 </div>
-              </div>
-            );
-          },
-          ...props.rowSelection,
-        }
-      : undefined,
-  };
+              );
+            },
+            ...props.rowSelection,
+          }
+        : undefined,
+    };
 
-  const defaultRowKey = (record: any) => {
-    return field.value?.indexOf?.(record);
-  };
+    const defaultRowKey = (record: any) => {
+      return field.value?.indexOf?.(record);
+    };
 
-  return (
-    <div
-      className={css`
-        .ant-table {
-          overflow-x: auto;
-          overflow-y: hidden;
-        }
-      `}
-    >
-      <ReactDragListView
-        handleSelector={'.drag-handle'}
-        onDragEnd={async (fromIndex, toIndex) => {
-          const from = field.value[fromIndex];
-          const to = field.value[toIndex];
-          field.move(fromIndex, toIndex);
-          await move(from, to);
-        }}
-        lineClassName={css`
-          border-bottom: 2px solid rgba(241, 139, 98, 0.6) !important;
+    return (
+      <div
+        className={css`
+          .ant-table {
+            overflow-x: auto;
+            overflow-y: hidden;
+          }
         `}
       >
-        <Table
-          rowKey={defaultRowKey}
-          {...others}
-          {...restProps}
-          components={components}
-          columns={columns}
-          dataSource={field?.value?.slice?.()}
-        />
-      </ReactDragListView>
-    </div>
-  );
-});
+        <ReactDragListView
+          handleSelector={'.drag-handle'}
+          onDragEnd={async (fromIndex, toIndex) => {
+            const from = field.value[fromIndex];
+            const to = field.value[toIndex];
+            field.move(fromIndex, toIndex);
+            await move(from, to);
+          }}
+          lineClassName={css`
+            border-bottom: 2px solid ${new TinyColor(token.colorSettings).setAlpha(0.6).toHex8String()} !important;
+          `}
+        >
+          <Table
+            rowKey={defaultRowKey}
+            {...others}
+            {...restProps}
+            components={components}
+            columns={columns}
+            dataSource={field?.value?.slice?.()}
+          />
+        </ReactDragListView>
+      </div>
+    );
+  },
+  { displayName: 'TableArray' },
+);

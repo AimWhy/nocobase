@@ -1,29 +1,99 @@
----
-nav:
-  path: /client
-group:
-  path: /schema-components
----
-
 # DatePicker
 
-## Examples
+级联选择器，其基于 ant-design [DatePicker](https://ant.design/components/date-picker/) 组件封装。
 
-### Basic
+## DatePicker
 
-<code src="./demos/demo1.tsx" />
+```ts
+type DatePickerProps = AntdDatePickerProps
+```
 
-### DatePicker (GMT)
+### Basic Usage
 
-<code src="./demos/demo3.tsx" />
+<code src="./demos/new-demos/date-basic.tsx"></code>
 
-### RangePicker
+### Format
 
-<code src="./demos/demo2.tsx" />
+<code src="./demos/new-demos/date-format.tsx"></code>
 
-## API
+### Show Time Picker
 
-基于 antd 的 [DatePicker](https://ant.design/components/date-picker/#API)，新增了以下扩展属性，用于支持 NocoBase 的日期字段设置。
+<code src="./demos/new-demos/date-show-time.tsx"></code>
 
-- `dateFormat` 设置日期格式
-- `timeFormat` 设置时间格式
+### Read Pretty
+
+```ts
+interface GetDefaultFormatProps {
+  format?: string;
+  dateFormat?: string;
+  timeFormat?: string;
+  picker?: 'year' | 'month' | 'week' | 'quarter';
+  showTime?: boolean;
+}
+
+interface Str2momentOptions {
+  gmt?: boolean;
+  picker?: 'year' | 'month' | 'week' | 'quarter';
+  utcOffset?: number;
+  utc?: boolean;
+}
+
+interface ReadPrettyDatePickerProps extends Str2momentOptions, GetDefaultFormatProps {
+  value?: Str2momentValue;
+  className?: string;
+  prefixCls?: string;
+}
+```
+
+<code src="./demos/new-demos/date-read-pretty.tsx"></code>
+
+<!-- ### GMT
+
+<code src="./demos/new-demos/date-gmt.tsx"></code> -->
+
+<!-- ### UTC
+
+<code src="./demos/new-demos/date-utc.tsx"></code> -->
+
+<!-- ### GMT and UTC
+
+<code src="./demos/new-demos/date-gmt-utc.tsx"></code> -->
+
+## RangePicker
+
+```ts
+type DatePickerProps = AntdRangePickerProps
+```
+
+### Basic Usage
+
+<code src="./demos/new-demos/range-basic.tsx"></code>
+
+### Format
+
+<code src="./demos/new-demos/range-format.tsx"></code>
+
+### Read Pretty
+
+```ts
+interface DateRangePickerReadPrettyProps extends Str2momentOptions, GetDefaultFormatProps {
+  value?: Str2momentValue;
+  className?: string;
+  prefixCls?: string;
+  style?: React.CSSProperties;
+}
+```
+
+<code src="./demos/new-demos/range-read-pretty.tsx"></code>
+
+<!-- ### GMT
+
+<code src="./demos/new-demos/range-gmt.tsx"></code> -->
+
+<!-- ### UTC
+
+<code src="./demos/new-demos/range-utc.tsx"></code> -->
+
+<!-- ### GMT and UTC
+
+<code src="./demos/new-demos/range-gmt-utc.tsx"></code> -->

@@ -1,74 +1,14 @@
-import { css } from '@emotion/css';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
 
-const moreOptions = {
-  autoGenId: {
-    type: 'boolean',
-    'x-content': '{{t("Generate ID field automatically")}}',
-    default: true,
-    'x-decorator': 'FormItem',
-    'x-component': 'Checkbox',
-    'x-disabled': '{{ !createOnly }}',
-    'x-reactions': [
-      {
-        target: 'sortable',
-        when: '{{createOnly&&!$self.value}}',
-        fulfill: {
-          state: {
-            value: false,
-          },
-          schema: {
-            'x-disabled': true,
-          },
-        },
-        otherwise: {
-          schema: {
-            'x-disabled': '{{!createOnly}}',
-          },
-        },
-      },
-    ],
-  },
-  createdBy: {
-    type: 'boolean',
-    'x-content': '{{t("Store the creation user of each record")}}',
-    default: true,
-    'x-decorator': 'FormItem',
-    'x-component': 'Checkbox',
-    'x-disabled': '{{ !createOnly }}',
-  },
-  updatedBy: {
-    type: 'boolean',
-    'x-content': '{{t("Store the last update user of each record")}}',
-    default: true,
-    'x-decorator': 'FormItem',
-    'x-component': 'Checkbox',
-    'x-disabled': '{{ !createOnly }}',
-  },
-  createdAt: {
-    type: 'boolean',
-    'x-content': '{{t("Store the creation time of each record")}}',
-    default: true,
-    'x-decorator': 'FormItem',
-    'x-component': 'Checkbox',
-    'x-disabled': '{{ !createOnly }}',
-  },
-  updatedAt: {
-    type: 'boolean',
-    'x-content': '{{t("Store the last update time of each record")}}',
-    default: true,
-    'x-decorator': 'FormItem',
-    'x-component': 'Checkbox',
-    'x-disabled': '{{ !createOnly }}',
-  },
-  sortable: {
-    type: 'boolean',
-    'x-content': '{{t("Records can be sorted")}}',
-    default: true,
-    'x-decorator': 'FormItem',
-    'x-component': 'Checkbox',
-    'x-disabled': '{{ !createOnly }}',
-  },
-};
+import { css } from '@emotion/css';
+import { PresetFields } from '../components/PresetFields';
 
 export const defaultConfigurableProperties = {
   title: {
@@ -100,13 +40,40 @@ export const defaultConfigurableProperties = {
     },
     'x-disabled': '{{ !createOnly }}',
     'x-visible': '{{ enableInherits}}',
-    'x-reactions': ['{{useAsyncDataSource(loadCollections)}}'],
+    'x-reactions': ['{{useAsyncDataSource(loadCollections, ["file"])}}'],
   },
-  ...moreOptions,
-  moreOptions: {
-    title: '{{t("More options")}}',
+  category: {
+    title: '{{t("Categories")}}',
+    type: 'hasMany',
+    name: 'category',
+    'x-decorator': 'FormItem',
+    'x-component': 'Select',
+    'x-component-props': {
+      mode: 'multiple',
+    },
+    'x-reactions': ['{{useAsyncDataSource(loadCategories)}}'],
+  },
+  description: {
+    title: '{{t("Description")}}',
+    type: 'string',
+    name: 'description',
+    'x-decorator': 'FormItem',
+    'x-component': 'Input.TextArea',
+  },
+  simplePaginate: {
+    'x-content': '{{t("Use simple pagination mode")}}',
+    type: 'string',
+    name: 'simplePaginate',
+    'x-decorator': 'FormItem',
+    'x-component': 'Checkbox',
+    description:
+      '{{t("Skip getting the total number of table records during paging to speed up loading. It is recommended to enable this option for data tables with a large amount of data")}}',
+  },
+  presetFields: {
+    title: '{{t("Preset fields")}}',
     type: 'void',
     'x-decorator': 'FormItem',
+    'x-visible': '{{ createOnly }}',
     'x-decorator-props': {
       className: css`
         .ant-formily-item {
@@ -114,8 +81,10 @@ export const defaultConfigurableProperties = {
         }
       `,
     },
-    properties: {
-      ...moreOptions,
+    'x-component': PresetFields,
+    'x-component-props': {
+      disabled: '{{ presetFieldsDisabled }}',
+      presetFieldsDisabledIncludes: '{{presetFieldsDisabledIncludes}}',
     },
   },
 };
@@ -124,16 +93,19 @@ export type DefaultConfigurableKeys =
   | 'name'
   | 'title'
   | 'inherits'
+  | 'category'
   | 'autoGenId'
   | 'createdBy'
   | 'updatedBy'
   | 'createdAt'
   | 'updatedAt'
   | 'sortable'
-  | 'moreOptions';
+  | 'description'
+  | 'simplePaginate'
+  | 'presetFields';
 
 export const getConfigurableProperties = (...keys: DefaultConfigurableKeys[]) => {
-  const props = {};
+  const props = {} as Record<DefaultConfigurableKeys, any>;
   for (const key of keys) {
     if (defaultConfigurableProperties[key]) {
       props[key] = defaultConfigurableProperties[key];

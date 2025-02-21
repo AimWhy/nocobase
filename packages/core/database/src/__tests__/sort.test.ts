@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { Database } from '../database';
 import { mockDatabase } from './';
 
@@ -6,6 +15,7 @@ describe('sort', function () {
 
   beforeEach(async () => {
     db = mockDatabase();
+    await db.clean({ drop: true });
   });
 
   afterEach(async () => {
@@ -41,11 +51,11 @@ describe('sort', function () {
       sort: '-num',
     });
     const nums = items.map((item) => item.get('num'));
-    expect(nums).toEqual([3,2,1,null]);
+    expect(nums).toEqual([3, 2, 1, null]);
     const items2 = await Test.repository.find({
       sort: 'num',
     });
     const nums2 = items2.map((item) => item.get('num'));
-    expect(nums2).toEqual([1,2,3,null]);
+    expect(nums2).toEqual([1, 2, 3, null]);
   });
 });

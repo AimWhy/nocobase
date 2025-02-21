@@ -1,21 +1,20 @@
-FROM node:16-stretch-slim as builder
+FROM node:20-bookworm-slim as builder
+
+ARG CNA_VERSION
 
 WORKDIR /app
 
 RUN cd /app \
   && yarn config set network-timeout 600000 -g \
-  && yarn create nocobase-app my-nocobase-app -a -e APP_ENV=production \
+  && npx -y create-nocobase-app@${CNA_VERSION} my-nocobase-app -a -e APP_ENV=production \
   && cd /app/my-nocobase-app \
   && yarn install --production
 
 RUN cd /app \
-  && rm -rf my-nocobase-app/packages/app/client/src/.umi \
   && rm -rf nocobase.tar.gz \
-  && find ./my-nocobase-app/node_modules/china-division/dist -name '*.csv' -delete \
-  && find ./my-nocobase-app/node_modules/china-division/dist -name '*.sqlite' -delete \
   && tar -zcf ./nocobase.tar.gz -C /app/my-nocobase-app .
 
-FROM node:16-stretch-slim
+FROM node:20-bookworm-slim
 
 # COPY ./sources.list /etc/apt/sources.list
 RUN ARCH= && dpkgArch="$(dpkg --print-architecture)" \
@@ -30,10 +29,9 @@ RUN ARCH= && dpkgArch="$(dpkg --print-architecture)" \
   esac \
   && set -ex \
   # libatomic1 for arm
-  && apt-get update && apt-get install -y nginx
+  && apt-get update && apt-get install -y nginx libaio1
 
 RUN rm -rf /etc/nginx/sites-enabled/default
-COPY ./nocobase.conf /etc/nginx/sites-enabled/nocobase.conf
 COPY --from=builder /app/nocobase.tar.gz /app/nocobase.tar.gz
 
 WORKDIR /app/nocobase
@@ -41,5 +39,7 @@ WORKDIR /app/nocobase
 COPY docker-entrypoint.sh /app/
 # COPY docker-entrypoint.sh /usr/local/bin/
 # ENTRYPOINT ["docker-entrypoint.sh"]
+
+EXPOSE 80/tcp
 
 CMD ["/app/docker-entrypoint.sh"]

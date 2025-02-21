@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { mockDatabase } from '../index';
 import { Collection } from '../../collection';
 import { Database } from '@nocobase/database';
@@ -13,7 +22,7 @@ describe('destroy with targetKey', function () {
 
   beforeEach(async () => {
     db = mockDatabase();
-
+    await db.clean({ drop: true });
     User = db.collection({
       name: 'users',
       autoGenId: false,
@@ -313,5 +322,64 @@ describe('destroy', () => {
 
     await User.repository.destroy(u2['id']);
     expect(await User.repository.count()).toEqual(2);
+  });
+
+  it('should not destroy data when filter is empty', async () => {
+    await User.repository.createMany({
+      records: [
+        {
+          name: 'u1',
+        },
+        {
+          name: 'u3',
+        },
+        {
+          name: 'u2',
+        },
+      ],
+    });
+
+    let err;
+
+    try {
+      await User.repository.destroy({
+        filter: {},
+      });
+    } catch (e) {
+      err = e;
+    }
+
+    expect(await User.repository.count()).toBe(3);
+  });
+
+  it('should not destroy data when filter is not valid', async () => {
+    await User.repository.createMany({
+      records: [
+        {
+          name: 'u1',
+        },
+        {
+          name: 'u3',
+        },
+        {
+          name: 'u2',
+        },
+      ],
+    });
+
+    let err;
+
+    try {
+      await User.repository.destroy({
+        filter: {
+          $and: [],
+          $or: [],
+        },
+      });
+    } catch (e) {
+      err = e;
+    }
+
+    expect(await User.repository.count()).toBe(3);
   });
 });

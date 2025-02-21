@@ -1,32 +1,41 @@
-import { defaultProps, operators, unique } from './properties';
-import { IField } from './types';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
 
-export const phone: IField = {
-  name: 'phone',
-  type: 'object',
-  group: 'basic',
-  order: 3,
-  title: '{{t("Phone")}}',
-  sortable: true,
-  default: {
+import { defaultProps, operators, unique } from './properties';
+import { CollectionFieldInterface } from '../../data-source/collection-field-interface/CollectionFieldInterface';
+
+export class PhoneFieldInterface extends CollectionFieldInterface {
+  name = 'phone';
+  type = 'object';
+  group = 'basic';
+  order = 3;
+  title = '{{t("Phone")}}';
+  sortable = true;
+  default = {
     type: 'string',
-    // name,
     uiSchema: {
       type: 'string',
-      // title,
       'x-component': 'Input',
       'x-component-props': {
-        type: 'tel'
+        type: 'tel',
       },
       // 'x-validator': 'phone',
     },
-  },
-  hasDefaultValue: true,
-  properties: {
+  };
+  availableTypes = ['string'];
+  hasDefaultValue = true;
+  properties = {
     ...defaultProps,
     unique,
-  },
-  filterable: {
+  };
+  filterable = {
     operators: operators.string,
-  },
-};
+  };
+  titleUsable = true;
+}

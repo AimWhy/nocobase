@@ -1,5 +1,14 @@
-import Database from '../database';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { Model, Transactionable } from 'sequelize';
+import Database from '../database';
 
 interface ReferentialIntegrityCheckOptions extends Transactionable {
   db: Database;
@@ -9,8 +18,7 @@ interface ReferentialIntegrityCheckOptions extends Transactionable {
 export async function referentialIntegrityCheck(options: ReferentialIntegrityCheckOptions) {
   const { referencedInstance, db, transaction } = options;
 
-  // @ts-ignore
-  const collection = db.modelCollection.get(referencedInstance.constructor);
+  const collection = db.getCollectionByModelName(referencedInstance.constructor.name);
 
   const collectionName = collection.name;
   const references = db.referenceMap.getReferences(collectionName);
@@ -21,8 +29,17 @@ export async function referentialIntegrityCheck(options: ReferentialIntegrityChe
 
   for (const reference of references) {
     const { sourceCollectionName, sourceField, targetField, onDelete } = reference;
+
+    if (onDelete === 'NO ACTION') {
+      continue;
+    }
+
     const sourceCollection = db.collections.get(sourceCollectionName);
     const sourceRepository = sourceCollection.repository;
+
+    if (sourceCollection.isView()) {
+      continue;
+    }
 
     const filter = {
       [sourceField]: referencedInstance[targetField],

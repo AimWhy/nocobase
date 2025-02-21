@@ -1,11 +1,22 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { createForm } from '@formily/core';
 import { Schema } from '@formily/react';
 import { Spin } from 'antd';
-import React, { useMemo } from 'react';
-import { useRequest } from '../../api-client';
-import { useSchemaComponentContext } from '../hooks';
+import React, { memo, useMemo } from 'react';
+import { useRemoteCollectionManagerLoading } from '../../collection-manager/CollectionManagerProvider';
+import { LOADING_DELAY } from '../../variables/constants';
+import { useComponent } from '../hooks';
 import { FormProvider } from './FormProvider';
 import { SchemaComponent } from './SchemaComponent';
+import { useRequestSchema } from './useRequestSchema';
 
 export interface RemoteSchemaComponentProps {
   scope?: any;
@@ -17,6 +28,12 @@ export interface RemoteSchemaComponentProps {
   hidden?: any;
   onlyRenderProperties?: boolean;
   noForm?: boolean;
+  /**
+   * @default true
+   */
+  memoized?: boolean;
+  NotFoundPage?: React.ComponentType | string;
+  onPageNotFind?: () => void;
 }
 
 const defaultTransform = (s: Schema) => s;
@@ -30,35 +47,41 @@ const RequestSchemaComponent: React.FC<RemoteSchemaComponentProps> = (props) => 
     uid,
     components,
     onSuccess,
+    NotFoundPage,
     schemaTransform = defaultTransform,
+    onPageNotFind,
   } = props;
-  const { reset } = useSchemaComponentContext();
-  const conf = {
-    url: `/uiSchemas:${onlyRenderProperties ? 'getProperties' : 'getJsonSchema'}/${uid}`,
-  };
+  const type = onlyRenderProperties ? 'getProperties' : 'getJsonSchema';
   const form = useMemo(() => createForm(), [uid]);
-  const { data, loading } = useRequest(conf, {
-    refreshDeps: [uid],
-    onSuccess(data) {
+  const { schema, loading } = useRequestSchema({
+    uid,
+    type,
+    onSuccess: (data) => {
       onSuccess && onSuccess(data);
-      reset && reset();
     },
   });
-  if (loading) {
-    return <Spin />;
+  const NotFoundComponent = useComponent(NotFoundPage);
+  const collectionManagerLoading = useRemoteCollectionManagerLoading();
+
+  if (collectionManagerLoading || loading || hidden) {
+    return <Spin style={{ width: '100%', marginTop: 20 }} delay={LOADING_DELAY} />;
   }
-  if (hidden) {
-    return <Spin />;
+
+  if (!schema || Object.keys(schema).length === 0) {
+    onPageNotFind && onPageNotFind();
+    return NotFoundComponent ? <NotFoundComponent /> : null;
   }
+
   return noForm ? (
-    <SchemaComponent memoized components={components} scope={scope} schema={schemaTransform(data?.data || {})} />
+    <SchemaComponent components={components} scope={scope} schema={schemaTransform(schema || {})} />
   ) : (
     <FormProvider form={form}>
-      <SchemaComponent memoized components={components} scope={scope} schema={schemaTransform(data?.data || {})} />
+      <SchemaComponent components={components} scope={scope} schema={schemaTransform(schema || {})} />
     </FormProvider>
   );
 };
 
-export const RemoteSchemaComponent: React.FC<RemoteSchemaComponentProps> = (props) => {
+export const RemoteSchemaComponent: React.FC<RemoteSchemaComponentProps> = memo((props) => {
   return props.uid ? <RequestSchemaComponent {...props} /> : null;
-};
+});
+RemoteSchemaComponent.displayName = 'RemoteSchemaComponent';

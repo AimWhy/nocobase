@@ -1,63 +1,54 @@
-import { css } from '@emotion/css';
-import cls from 'classnames';
-import React from 'react';
-import { SortableItem } from '../../common';
-import { useDesigner } from '../../hooks';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
 
-export const BlockItem: React.FC<any> = (props) => {
-  const Designer = useDesigner();
-  return (
-    <SortableItem
-      className={cls(
-        'nb-block-item',
-        props.className,
-        css`
-          position: relative;
-          &:hover {
-            > .general-schema-designer {
-              display: block;
-            }
-          }
-          &.nb-form-item:hover {
-            > .general-schema-designer {
-              background: rgba(241, 139, 98, 0.06) !important;
-              border: 0 !important;
-              top: -5px !important;
-              bottom: -5px !important;
-              left: -5px !important;
-              right: -5px !important;
-            }
-          }
-          > .general-schema-designer {
-            position: absolute;
-            z-index: 999;
-            top: 0;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            display: none;
-            border: 2px solid rgba(241, 139, 98, 0.3);
-            pointer-events: none;
-            > .general-schema-designer-icons {
-              position: absolute;
-              right: 2px;
-              top: 2px;
-              line-height: 16px;
-              pointer-events: all;
-              .ant-space-item {
-                background-color: #f18b62;
-                color: #fff;
-                line-height: 16px;
-                width: 16px;
-                padding-left: 1px;
-              }
-            }
-          }
-        `,
-      )}
-    >
-      <Designer />
-      {props.children}
-    </SortableItem>
-  );
-};
+import { useFieldSchema } from '@formily/react';
+import cls from 'classnames';
+import React, { useMemo } from 'react';
+import { ErrorBoundary } from 'react-error-boundary';
+import { useSchemaToolbarRender } from '../../../application';
+import { withDynamicSchemaProps } from '../../../hoc/withDynamicSchemaProps';
+import { SortableItem } from '../../common';
+import { useProps } from '../../hooks';
+import { ErrorFallback } from '../error-fallback';
+import { useStyles } from './BlockItem.style';
+import { useGetAriaLabelOfBlockItem } from './hooks/useGetAriaLabelOfBlockItem';
+
+export interface BlockItemProps {
+  name?: string;
+  className?: string;
+  style?: React.CSSProperties;
+  children?: React.ReactNode;
+}
+
+export const BlockItem: React.FC<BlockItemProps> = withDynamicSchemaProps(
+  (props) => {
+    // 新版 UISchema（1.0 之后）中已经废弃了 useProps，这里之所以继续保留是为了兼容旧版的 UISchema
+    const { className, children, style } = useProps(props);
+    const { componentCls, hashId } = useStyles();
+    const fieldSchema = useFieldSchema();
+    const { render } = useSchemaToolbarRender(fieldSchema);
+    const { getAriaLabel } = useGetAriaLabelOfBlockItem(props.name);
+    const label = useMemo(() => getAriaLabel(), [getAriaLabel]);
+
+    return (
+      <SortableItem
+        role="button"
+        aria-label={label}
+        className={cls('nb-block-item', className, componentCls, hashId)}
+        style={style}
+      >
+        {render()}
+        <ErrorBoundary FallbackComponent={ErrorFallback} onError={console.log}>
+          {children}
+        </ErrorBoundary>
+      </SortableItem>
+    );
+  },
+  { displayName: 'BlockItem' },
+);

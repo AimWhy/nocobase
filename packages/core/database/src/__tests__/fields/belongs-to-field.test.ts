@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { Database } from '../../database';
 import { mockDatabase } from '../';
 import { IdentifierError } from '../../errors/identifier-error';
@@ -7,10 +16,106 @@ describe('belongs to field', () => {
 
   beforeEach(async () => {
     db = mockDatabase();
+    await db.clean({ drop: true });
   });
 
   afterEach(async () => {
     await db.close();
+  });
+
+  it('should load with no action', async () => {
+    const User = db.collection({
+      name: 'users',
+      fields: [{ type: 'string', name: 'name', unique: true }],
+    });
+
+    const Post = db.collection({
+      name: 'posts',
+      fields: [
+        { type: 'string', name: 'title' },
+        { type: 'belongsTo', name: 'user', onDelete: 'NO ACTION' },
+      ],
+    });
+
+    await db.sync();
+
+    const u1 = await User.repository.create({ values: { name: 'u1' } });
+    const p1 = await Post.repository.create({ values: { title: 'p1', user: u1.id } });
+
+    // delete u1
+    await User.repository.destroy({ filterByTk: u1.id });
+
+    // list posts with user
+    const post = await Post.repository.findOne({
+      appends: ['user'],
+    });
+
+    expect(post.user).toBeNull();
+  });
+
+  it('should throw error when associated with item that null with target key', async () => {
+    const User = db.collection({
+      name: 'users',
+      fields: [{ type: 'string', name: 'name', unique: true }],
+    });
+
+    const Profile = db.collection({
+      name: 'profiles',
+      autoGenId: true,
+      timestamps: false,
+      fields: [
+        {
+          type: 'belongsTo',
+          name: 'user',
+          target: 'users',
+          foreignKey: 'userName',
+          targetKey: 'name',
+        },
+      ],
+    });
+
+    await db.sync();
+
+    await expect(
+      Profile.repository.create({
+        values: {
+          user: {},
+        },
+      }),
+    ).rejects.toThrow('The target key name is not set in users');
+  });
+  it('should check association keys type', async () => {
+    const User = db.collection({
+      name: 'users',
+      fields: [
+        { type: 'string', name: 'name' },
+        { type: 'bigInt', name: 'description' },
+      ],
+    });
+
+    let error;
+    try {
+      const Post = db.collection({
+        name: 'posts',
+        fields: [
+          { type: 'string', name: 'title' },
+          { type: 'string', name: 'userName' },
+          {
+            type: 'belongsTo',
+            name: 'user',
+            foreignKey: 'userName',
+            targetKey: 'description', // wrong type
+          },
+        ],
+      });
+    } catch (e) {
+      error = e;
+    }
+
+    expect(error).toBeDefined();
+    expect(error.message).toBe(
+      'Foreign key "userName" type "STRING" does not match target key "description" type "BIGINT" in belongs to relation "user" of collection "posts"',
+    );
   });
 
   it('association undefined', async () => {
@@ -65,10 +170,8 @@ describe('belongs to field', () => {
 
   it('custom targetKey and foreignKey', async () => {
     db.collection({
-      name: "posts",
-      fields: [
-        { type: "string", name: "key" },
-      ]
+      name: 'posts',
+      fields: [{ type: 'string', name: 'key' }],
     });
 
     const Comment = db.collection({
@@ -117,7 +220,6 @@ describe('belongs to field', () => {
     } catch (e) {
       error = e;
     }
-
 
     expect(error).toBeInstanceOf(IdentifierError);
   });

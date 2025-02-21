@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import lodash from 'lodash';
 import { ModelStatic } from 'sequelize';
 import { Model } from './model';
@@ -10,12 +19,29 @@ type UpdateValues = {
 };
 
 type UpdateAction = 'create' | 'update';
+
 export class UpdateGuard {
   model: ModelStatic<any>;
   action: UpdateAction;
+  underscored: boolean;
   private associationKeysToBeUpdate: AssociationKeysToBeUpdate;
   private blackList: BlackList;
   private whiteList: WhiteList;
+
+  static fromOptions(model, options) {
+    const guard = new UpdateGuard();
+    guard.setModel(model);
+    guard.setWhiteList(options.whitelist);
+    guard.setBlackList(options.blacklist);
+    guard.setAction(lodash.get(options, 'action', 'update'));
+    guard.setAssociationKeysToBeUpdate(options.updateAssociationValues);
+
+    if (options.underscored) {
+      guard.underscored = options.underscored;
+    }
+
+    return guard;
+  }
 
   setAction(action: UpdateAction) {
     this.action = action;
@@ -41,16 +67,58 @@ export class UpdateGuard {
     this.blackList = blackList;
   }
 
+  checkValues(values) {
+    const dfs = (values, model) => {
+      const associations = model.associations;
+      const belongsToManyThroughNames = [];
+
+      const associationValueKeys = Object.keys(associations).filter((key) => {
+        return Object.keys(values).includes(key);
+      });
+
+      const belongsToManyValueKeys = associationValueKeys.filter((key) => {
+        return associations[key].associationType === 'BelongsToMany';
+      });
+
+      const hasManyValueKeys = associationValueKeys.filter((key) => {
+        return associations[key].associationType === 'HasMany';
+      });
+
+      for (const belongsToManyKey of belongsToManyValueKeys) {
+        const association = associations[belongsToManyKey];
+        const through = association.through.model;
+        belongsToManyThroughNames.push(through.name);
+      }
+
+      for (const hasManyKey of hasManyValueKeys) {
+        const association = associations[hasManyKey];
+        if (belongsToManyThroughNames.includes(association.target.name)) {
+          throw new Error(
+            `HasMany association ${hasManyKey} cannot be used with BelongsToMany association ${association.target.name} with same through model`,
+          );
+        }
+      }
+    };
+
+    dfs(values, this.model);
+  }
+
   /**
    * Sanitize values by whitelist blacklist
    * @param values
    */
   sanitize(values: UpdateValues) {
+    if (values === null || values === undefined) {
+      return values;
+    }
+
     values = lodash.clone(values);
 
     if (!this.model) {
       throw new Error('please set model first');
     }
+
+    this.checkValues(values);
 
     const associations = this.model.associations;
     const associationsValues = lodash.pick(values, Object.keys(associations));
@@ -76,19 +144,22 @@ export class UpdateGuard {
     Object.keys(associationsValues).forEach((association) => {
       let associationValues = associationsValues[association];
 
+      const associationObj = associations[association];
+
       const filterAssociationToBeUpdate = (value) => {
+        if (value === null) {
+          return value;
+        }
+
         const associationKeysToBeUpdate = this.associationKeysToBeUpdate || [];
 
         if (associationKeysToBeUpdate.includes(association)) {
           return value;
         }
 
-        const associationObj = associations[association];
-
-        const associationKeyName =
-          associationObj.associationType == 'BelongsTo' || associationObj.associationType == 'HasOne'
-            ? (<any>associationObj).targetKey
-            : associationObj.target.primaryKeyAttribute;
+        const associationKeyName = associationObj?.['options']?.targetKey
+          ? associationObj['options'].targetKey
+          : associationObj.target.primaryKeyAttribute;
 
         if (value[associationKeyName]) {
           return lodash.pick(value, [associationKeyName, ...Object.keys(associationObj.target.associations)]);
@@ -110,7 +181,7 @@ export class UpdateGuard {
 
       if (Array.isArray(associationValues)) {
         associationValues = associationValues.map((value) => {
-          if (typeof value == 'string' || typeof value == 'number') {
+          if (value === undefined || value === null || typeof value == 'string' || typeof value == 'number') {
             return value;
           } else {
             return sanitizeValue(value);
@@ -122,6 +193,16 @@ export class UpdateGuard {
 
       // set association values to sanitized value
       values[association] = associationValues;
+
+      if (associationObj.associationType === 'BelongsTo') {
+        if (typeof associationValues === 'object' && associationValues !== null) {
+          if (associationValues[(associationObj as any).targetKey] != null) {
+            values[(associationObj as any).foreignKey] = associationValues[(associationObj as any).targetKey];
+          }
+        } else {
+          values[(associationObj as any).foreignKey] = associationValues;
+        }
+      }
     });
 
     if (values instanceof Model) {
@@ -153,15 +234,5 @@ export class UpdateGuard {
     }, {});
 
     return result;
-  }
-
-  static fromOptions(model, options) {
-    const guard = new UpdateGuard();
-    guard.setModel(model);
-    guard.setWhiteList(options.whitelist);
-    guard.setBlackList(options.blacklist);
-    guard.setAction(lodash.get(options, 'action', 'update'));
-    guard.setAssociationKeysToBeUpdate(options.updateAssociationValues);
-    return guard;
   }
 }

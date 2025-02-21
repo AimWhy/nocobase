@@ -1,39 +1,65 @@
-import { dateTimeProps, defaultProps, operators } from './properties';
-import { IField } from './types';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
 
-export const datetime: IField = {
-  name: 'datetime',
-  type: 'object',
-  group: 'datetime',
-  order: 1,
-  title: '{{t("Datetime")}}',
-  sortable: true,
-  default: {
+import { CollectionFieldInterface } from '../../data-source/collection-field-interface/CollectionFieldInterface';
+import { dateTimeProps, defaultProps, operators } from './properties';
+
+export class DatetimeFieldInterface extends CollectionFieldInterface {
+  name = 'datetime';
+  type = 'object';
+  group = 'datetime';
+  order = 1;
+  title = '{{t("Datetime (with time zone)")}}';
+  sortable = true;
+  default = {
     type: 'date',
-    // name,
+    defaultToCurrentTime: false,
+    onUpdateToCurrentTime: false,
+    timezone: true,
     uiSchema: {
       type: 'string',
-      // title,
       'x-component': 'DatePicker',
       'x-component-props': {
         showTime: false,
+        utc: true,
       },
     },
-  },
-  hasDefaultValue: true,
-  properties: {
+  };
+  availableTypes = ['date', 'string', 'datetime', 'datetimeTz'];
+  hasDefaultValue = true;
+  properties = {
     ...defaultProps,
     ...dateTimeProps,
+    defaultToCurrentTime: {
+      type: 'boolean',
+      'x-decorator': 'FormItem',
+      'x-component': 'Checkbox',
+      'x-content': '{{t("Default value to current time")}}',
+    },
+    onUpdateToCurrentTime: {
+      type: 'boolean',
+      'x-decorator': 'FormItem',
+      'x-component': 'Checkbox',
+      'x-content': '{{t("Automatically update timestamp on update")}}',
+    },
     'uiSchema.x-component-props.gmt': {
       type: 'boolean',
       title: '{{t("GMT")}}',
+      'x-hidden': true,
       'x-component': 'Checkbox',
       'x-content': '{{t("Use the same time zone (GMT) for all users")}}',
       'x-decorator': 'FormItem',
       default: false,
     },
-  },
-  filterable: {
+  };
+  filterable = {
     operators: operators.datetime,
-  },
-};
+  };
+  titleUsable = true;
+}

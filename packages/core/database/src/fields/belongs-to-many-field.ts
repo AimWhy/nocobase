@@ -1,7 +1,16 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { omit } from 'lodash';
-import { BelongsToManyOptions as SequelizeBelongsToManyOptions, Utils } from 'sequelize';
+import { AssociationScope, BelongsToManyOptions as SequelizeBelongsToManyOptions, Utils } from 'sequelize';
 import { Collection } from '../collection';
-import { Reference } from '../features/ReferencesMap';
+import { Reference } from '../features/references-map';
 import { checkIdentifier } from '../utils';
 import { BelongsToField } from './belongs-to-field';
 import { MultipleRelationFieldOptions, RelationField } from './relation-field';
@@ -32,10 +41,78 @@ export class BelongsToManyField extends RelationField {
 
     const onDelete = this.options.onDelete || 'CASCADE';
 
+    const priority = this.options.onDelete ? 'user' : 'default';
+
+    const targetAssociation = association.toTarget;
+
+    if (association.targetKey) {
+      targetAssociation.targetKey = association.targetKey;
+    }
+
+    const sourceAssociation = association.toSource;
+
+    if (association.sourceKey) {
+      sourceAssociation.targetKey = association.sourceKey;
+    }
+
     return [
-      BelongsToField.toReference(db, association.toSource, onDelete),
-      BelongsToField.toReference(db, association.toTarget, onDelete),
+      BelongsToField.toReference(db, targetAssociation, onDelete, priority),
+      BelongsToField.toReference(db, sourceAssociation, onDelete, priority),
     ];
+  }
+
+  checkAssociationKeys(database) {
+    let { foreignKey, sourceKey, otherKey, targetKey } = this.options;
+
+    const through = this.through;
+    const throughCollection = database.getCollection(through);
+
+    if (!throughCollection) {
+      // skip check if through collection not found
+      return;
+    }
+
+    if (!sourceKey) {
+      sourceKey = this.collection.model.primaryKeyAttribute;
+    }
+
+    if (!foreignKey) {
+      foreignKey = Utils.camelize([Utils.singularize(this.collection.model.name), sourceKey].join('_'));
+    }
+
+    if (!targetKey) {
+      targetKey = this.TargetModel.primaryKeyAttribute;
+    }
+
+    if (!otherKey) {
+      otherKey = Utils.camelize([Utils.singularize(this.TargetModel.name), targetKey].join('_'));
+    }
+
+    const foreignKeyAttribute = throughCollection.model.rawAttributes[foreignKey];
+    const otherKeyAttribute = throughCollection.model.rawAttributes[otherKey];
+    const sourceKeyAttribute = this.collection.model.rawAttributes[sourceKey];
+    const targetKeyAttribute = this.TargetModel.rawAttributes[targetKey];
+
+    if (!foreignKeyAttribute || !otherKeyAttribute || !sourceKeyAttribute || !targetKeyAttribute) {
+      return;
+    }
+
+    const foreignKeyType = foreignKeyAttribute.type.constructor.toString();
+    const otherKeyType = otherKeyAttribute.type.constructor.toString();
+    const sourceKeyType = sourceKeyAttribute.type.constructor.toString();
+    const targetKeyType = targetKeyAttribute.type.constructor.toString();
+
+    if (!this.keyPairsTypeMatched(foreignKeyType, sourceKeyType)) {
+      throw new Error(
+        `Foreign key "${foreignKey}" type "${foreignKeyType}" does not match source key "${sourceKey}" type "${sourceKeyType}" in belongs to many relation "${this.name}" of collection "${this.collection.name}"`,
+      );
+    }
+
+    if (!this.keyPairsTypeMatched(otherKeyType, targetKeyType)) {
+      throw new Error(
+        `Other key "${otherKey}" type "${otherKeyType}" does not match target key "${targetKey}" type "${targetKeyType}" in belongs to many relation "${this.name}" of collection "${this.collection.name}"`,
+      );
+    }
   }
 
   bind() {
@@ -48,6 +125,16 @@ export class BelongsToManyField extends RelationField {
       return false;
     }
 
+    if (!this.collection.model.primaryKeyAttribute) {
+      throw new Error(`Collection model ${this.collection.model.name} has no primary key attribute`);
+    }
+
+    if (!Target.primaryKeyAttribute) {
+      throw new Error(`Target model ${Target.name} has no primary key attribute`);
+    }
+
+    this.checkAssociationKeys(database);
+
     const through = this.through;
 
     let Through: Collection;
@@ -55,24 +142,37 @@ export class BelongsToManyField extends RelationField {
     if (database.hasCollection(through)) {
       Through = database.getCollection(through);
     } else {
-      Through = database.collection({
+      const throughCollectionOptions = {
         name: through,
-        // timestamps: false,
-      });
+      };
+
+      if (this.collection.options.dumpRules) {
+        throughCollectionOptions['dumpRules'] = this.collection.options.dumpRules;
+      }
+
+      // set through collection schema
+      if (this.collection.collectionSchema()) {
+        throughCollectionOptions['schema'] = this.collection.collectionSchema();
+      }
+
+      Through = database.collection(throughCollectionOptions);
 
       Object.defineProperty(Through.model, 'isThrough', { value: true });
     }
 
-    if (!this.options.onDelete) {
-      this.options.onDelete = 'CASCADE';
-    }
-
-    const association = collection.model.belongsToMany(Target, {
+    const belongsToManyOptions = {
       constraints: false,
       ...omit(this.options, ['name', 'type', 'target']),
       as: this.name,
-      through: Through.model,
-    });
+      through: {
+        model: Through.model,
+        scope: this.options.throughScope,
+        paranoid: this.options.throughParanoid,
+        unique: this.options.throughUnique,
+      },
+    };
+
+    const association = collection.model.belongsToMany(Target, belongsToManyOptions);
 
     // 建立关系之后从 pending 列表中删除
     database.removePendingField(this);
@@ -87,6 +187,10 @@ export class BelongsToManyField extends RelationField {
 
     if (!this.options.otherKey) {
       this.options.otherKey = association.otherKey;
+    }
+
+    if (!this.options.targetKey) {
+      this.options.targetKey = association.targetKey;
     }
 
     try {
@@ -117,7 +221,8 @@ export class BelongsToManyField extends RelationField {
     // 删掉 model 的关联字段
 
     const association = collection.model.associations[this.name];
-    if (association) {
+
+    if (association && !this.options.inherit) {
       this.references(association).forEach((reference) => this.database.referenceMap.removeReference(reference));
     }
 
@@ -132,4 +237,7 @@ export interface BelongsToManyFieldOptions
   type: 'belongsToMany';
   target?: string;
   through?: string;
+  throughScope?: AssociationScope;
+  throughUnique?: boolean;
+  throughParanoid?: boolean;
 }

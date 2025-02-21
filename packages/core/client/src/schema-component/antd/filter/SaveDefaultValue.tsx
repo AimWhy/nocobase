@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { css } from '@emotion/css';
 import { useFieldSchema, useForm } from '@formily/react';
 import { Button } from 'antd';
@@ -16,8 +25,8 @@ export const SaveDefaultValue = (props) => {
   return (
     <Button
       className={css`
-        border-color: rgb(241, 139, 98);
-        color: rgb(241, 139, 98);
+        border-color: var(--colorSettings);
+        color: var(--colorSettings);
       `}
       type={'dashed'}
       onClick={() => {
