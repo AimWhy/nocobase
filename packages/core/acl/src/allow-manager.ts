@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { ACL } from './acl';
 
 export type ConditionFunc = (ctx: any) => Promise<boolean> | boolean;
@@ -87,7 +96,7 @@ export class AllowManager {
   aclMiddleware() {
     return async (ctx, next) => {
       const { resourceName, actionName } = ctx.action;
-      let skip = await this.acl.allowManager.isAllowed(resourceName, actionName, ctx);
+      const skip = await this.acl.allowManager.isAllowed(resourceName, actionName, ctx);
 
       if (skip) {
         ctx.permission = {

@@ -1,4 +1,5 @@
 {
+  "extends": "./tsconfig.paths.json",
   "compilerOptions": {
     "esModuleInterop": true,
     "moduleResolution": "node",
@@ -15,14 +16,6 @@
     "declaration": true,
     "experimentalDecorators": true,
     "downlevelIteration": true,
-    "baseUrl": ".",
-    "paths": {
-      "@{{{name}}}/app-*": [
-        "packages/app/*/src"
-      ],
-      "@{{{name}}}/plugin-*": [
-        "packages/plugins/*/src"
-      ]
-    }
+    "baseUrl": "."
   }
 }

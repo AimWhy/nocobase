@@ -1,4 +1,8 @@
-name: manual-build-pr-docker-image
+name: Manual build pr docker image
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 on:
   workflow_dispatch:
@@ -40,7 +44,7 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           context: .
-          file: Dockerfile.acr
+          file: Dockerfile.pro
           build-args: |
             VERDACCIO_URL=http://localhost:4873/
             COMMIT_HASH=${GITHUB_SHA}
@@ -48,7 +52,7 @@ jobs:
           tags: ${{ secrets.ALI_DOCKER_REGISTRY }}/nocobase/nocobase:pr-${{ inputs.pr_number }}
       - name: Deploy NocoBase
         run: |
-          curl --location --request POST "${{secrets.NOCOBASE_DEPLOY_HOST}}pr-${{ inputs.pr_number }}" \
+          curl --retry 2 --location --request POST "${{secrets.NOCOBASE_DEPLOY_HOST}}pr-${{ inputs.pr_number }}" \
           --header 'Content-Type: application/json' \
           -d "{
               \"tag\": \"pr-${{ inputs.pr_number }}\",

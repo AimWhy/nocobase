@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import type { Model } from './model';
 import type { CreateOptions, DestroyOptions, SaveOptions, SyncOptions, UpdateOptions } from 'sequelize/types';
 import { Collection, CollectionOptions } from './collection';
@@ -25,15 +34,24 @@ export type ModelCreateEventTypes = ModelCreateEventType | `${CollectionNameType
 export type ModelUpdateEventTypes = ModelUpdateEventType | `${CollectionNameType}.${ModelUpdateEventType}`;
 export type ModelSaveEventTypes = ModelSaveEventType | `${CollectionNameType}.${ModelSaveEventType}`;
 export type ModelDestroyEventTypes = ModelDestroyEventType | `${CollectionNameType}.${ModelDestroyEventType}`;
-export type ModelCreateWithAssociationsEventTypes = ModelCreateWithAssociationsEventType | `${CollectionNameType}.${ModelCreateWithAssociationsEventType}`;
-export type ModelUpdateWithAssociationsEventTypes = ModelUpdateWithAssociationsEventType | `${CollectionNameType}.${ModelUpdateWithAssociationsEventType}`;
-export type ModelSaveWithAssociationsEventTypes = ModelSaveWithAssociationsEventType | `${CollectionNameType}.${ModelSaveWithAssociationsEventType}`;
+export type ModelCreateWithAssociationsEventTypes =
+  | ModelCreateWithAssociationsEventType
+  | `${CollectionNameType}.${ModelCreateWithAssociationsEventType}`;
+export type ModelUpdateWithAssociationsEventTypes =
+  | ModelUpdateWithAssociationsEventType
+  | `${CollectionNameType}.${ModelUpdateWithAssociationsEventType}`;
+export type ModelSaveWithAssociationsEventTypes =
+  | ModelSaveWithAssociationsEventType
+  | `${CollectionNameType}.${ModelSaveWithAssociationsEventType}`;
 
 export type ModelBulkCreateEvnetTypes = ModelBulkCreateEvnetType | `${CollectionNameType}.${ModelBulkCreateEvnetType}`;
 export type ModelBulkUpdateEvnetTypes = ModelBulkUpdateEvnetType | `${CollectionNameType}.${ModelBulkUpdateEvnetType}`;
-export type ModelBulkDestroyEvnetTypes = ModelBulkDestroyEvnetType | `${CollectionNameType}.${ModelBulkDestroyEvnetType}`;
+export type ModelBulkDestroyEvnetTypes =
+  | ModelBulkDestroyEvnetType
+  | `${CollectionNameType}.${ModelBulkDestroyEvnetType}`;
 
-export type ModelEventTypes = ModelSyncEventType
+export type ModelEventTypes =
+  | ModelSyncEventType
   | ModelValidateEventTypes
   | ModelCreateEventTypes
   | ModelUpdateEventTypes
@@ -51,7 +69,8 @@ export type DatabaseAfterDefineCollectionEventType = 'afterDefineCollection';
 export type DatabaseBeforeRemoveCollectionEventType = 'beforeRemoveCollection';
 export type DatabaseAfterRemoveCollectionEventType = 'afterRemoveCollection';
 
-export type DatabaseEventTypes = DatabaseBeforeDefineCollectionEventType
+export type DatabaseEventTypes =
+  | DatabaseBeforeDefineCollectionEventType
   | DatabaseAfterDefineCollectionEventType
   | DatabaseBeforeRemoveCollectionEventType
   | DatabaseAfterRemoveCollectionEventType;

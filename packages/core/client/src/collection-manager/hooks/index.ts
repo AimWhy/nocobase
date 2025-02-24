@@ -1,4 +1,13 @@
-export * from './useCollection';
-export * from './useCollectionField';
-export * from './useCollectionManager';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+export * from './useCollection_deprecated';
+export * from './useCollectionField_deprecated';
+export * from './useCollectionManager_deprecated';
 export * from './useCollectionDataSource';

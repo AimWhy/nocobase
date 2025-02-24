@@ -1,13 +1,25 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { ArrayField, Field } from '@formily/core';
 import { useField, useFieldSchema } from '@formily/react';
 import React, { createContext, useContext, useEffect } from 'react';
 import { APIClient } from '../api-client';
-import { useCollectionField } from '../collection-manager';
 import { BlockProvider, useBlockRequestContext } from './BlockProvider';
 import { useFormBlockContext } from './FormBlockProvider';
 import { useFormFieldContext } from './FormFieldProvider';
 
+/**
+ * @internal
+ */
 export const TableFieldContext = createContext<any>({});
+TableFieldContext.displayName = 'TableFieldContext';
 
 const InternalTableFieldProvider = (props) => {
   const { params = {}, showIndex, dragSort, fieldName } = props;
@@ -122,22 +134,35 @@ export class TableFieldResource {
   }
 }
 
+/**
+ * @internal
+ */
 export const WithoutTableFieldResource = createContext(null);
+WithoutTableFieldResource.displayName = 'WithoutTableFieldResource';
 
+/**
+ * @internal
+ */
 export const TableFieldProvider = (props) => {
   return (
     <WithoutTableFieldResource.Provider value={false}>
-      <BlockProvider block={'TableField'} {...props}>
+      <BlockProvider name="table-field" block={'TableField'} {...props}>
         <InternalTableFieldProvider {...props} />
       </BlockProvider>
     </WithoutTableFieldResource.Provider>
   );
 };
 
+/**
+ * @internal
+ */
 export const useTableFieldContext = () => {
   return useContext(TableFieldContext);
 };
 
+/**
+ * @internal
+ */
 export const useTableFieldProps = () => {
   const field = useField<ArrayField>();
   const ctx = useTableFieldContext();
@@ -147,7 +172,7 @@ export const useTableFieldProps = () => {
       field.data = field.data || {};
       field.data.selectedRowKeys = ctx?.field?.data?.selectedRowKeys;
     }
-  }, [ctx?.service?.loading]);
+  }, [ctx?.field?.data?.selectedRowKeys, ctx?.service?.data?.data, ctx?.service?.loading, field]);
   return {
     size: 'middle',
     loading: ctx?.service?.loading,
@@ -158,9 +183,10 @@ export const useTableFieldProps = () => {
     rowKey: (record: any) => {
       return field.value?.indexOf?.(record);
     },
-    onRowSelectionChange(selectedRowKeys) {
+    onRowSelectionChange(selectedRowKeys, selectedRowData) {
       ctx.field.data = ctx?.field?.data || {};
       ctx.field.data.selectedRowKeys = selectedRowKeys;
+      ctx.field.data.selectedRowData = selectedRowData;
     },
     onChange({ current, pageSize }) {
       ctx.service.run({ page: current, pageSize });

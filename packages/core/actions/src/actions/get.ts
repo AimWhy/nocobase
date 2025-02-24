@@ -1,21 +1,15 @@
-import { Context } from '..';
-import { getRepositoryFromParams } from '../utils';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
 
-export async function get(ctx: Context, next) {
-  const repository = getRepositoryFromParams(ctx);
+import { proxyToRepository } from './proxy-to-repository';
 
-  const { filterByTk, fields, appends, except, filter } = ctx.action.params;
-
-  const instance = await repository.findOne({
-    filterByTk,
-    fields,
-    appends,
-    except,
-    filter,
-    context: ctx,
-  });
-
-  ctx.body = instance || null;
-
-  await next();
-}
+export const get = proxyToRepository(
+  ['filterByTk', 'fields', 'appends', 'except', 'filter', 'targetCollection'],
+  'findOne',
+);

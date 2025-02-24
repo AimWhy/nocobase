@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { mockServer } from './index';
 import { registerActions } from '@nocobase/actions';
 
@@ -9,6 +18,7 @@ describe('create action', () => {
 
   beforeEach(async () => {
     app = mockServer();
+    await app.db.clean({ drop: true });
     registerActions(app);
 
     Post = app.collection({
@@ -106,5 +116,14 @@ describe('create action', () => {
     expect(tag).not.toBeNull();
     expect(await tag.hasPost(p1)).toBeTruthy();
     expect(tag.get('name')).toEqual('hello');
+  });
+
+  test('create with empty values', async () => {
+    const response = await app.agent().resource('posts').create({});
+    expect(response.statusCode).toEqual(200);
+    const p1 = await Post.repository.findOne();
+
+    const response2 = await app.agent().resource('posts.comments', p1.get('id')).create({});
+    expect(response2.statusCode).toEqual(200);
   });
 });

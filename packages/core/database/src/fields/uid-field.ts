@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { uid } from '@nocobase/utils';
 import { DataTypes } from 'sequelize';
 import { BaseColumnFieldOptions, Field } from './field';
@@ -9,7 +18,7 @@ export class UidField extends Field {
 
   init() {
     const { name, prefix = '', pattern } = this.options;
-    const re = new RegExp(pattern || '^[A-Za-z0-9][A-Za-z0-9_-]*$');
+    const re = new RegExp(pattern || '^[A-Za-z0-9_][A-Za-z0-9_-]*$');
     this.listener = async (instance) => {
       const value = instance.get(name);
       if (!value) {
@@ -17,7 +26,9 @@ export class UidField extends Field {
       } else if (re.test(value)) {
         instance.set(name, value);
       } else {
-        throw new Error(`uid '${value}' is invalid`);
+        throw new Error(
+          `${this.collection.name}.${this.options.name} can only include A-Z, a-z, 0-9, _-*$, '${value}' is invalid`,
+        );
       }
     };
   }

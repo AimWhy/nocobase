@@ -1,101 +1,88 @@
-import { css } from '@emotion/css';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { createForm, onFieldValueChange } from '@formily/core';
-import { connect, FieldContext, FormContext } from '@formily/react';
+import { FieldContext, FormContext } from '@formily/react';
 import { merge } from '@formily/shared';
-import { Cascader } from 'antd';
-import React, { useContext, useMemo } from 'react';
+import React, { useCallback, useContext, useMemo } from 'react';
+import { CollectionFieldOptions_deprecated } from '../../../collection-manager';
 import { SchemaComponent } from '../../core';
-import { useCompile, useComponent } from '../../hooks';
+import { useComponent } from '../../hooks';
 import { FilterContext } from './context';
-import { useFilterOptions } from './useFilterActionProps';
 
-const VariableCascader = connect((props) => {
-  const fields = useFilterOptions('users');
-  const compile = useCompile();
-  const { value, onChange } = props;
-  return (
-    <Cascader
-      className={css`
-        width: 160px;
-      `}
-      value={value ? value.split('.') : []}
-      fieldNames={{
-        label: 'title',
-        value: 'name',
-        children: 'children',
-      }}
-      onChange={(value) => {
-        onChange(value ? value.join('.') : null);
-      }}
-      options={compile([
-        {
-          title: '{{t("Current user")}}',
-          name: 'currentUser',
-          children: fields
-            .filter((field) => {
-              if (!field.target) {
-                return true;
-              }
-              return field.type === 'belongsTo';
-            })
-            .map((field) => {
-              if (field.children) {
-                field.children = field.children.filter((child) => {
-                  return !child.target;
-                });
-              }
-              return field;
-            }),
-        },
-      ])}
-    />
-  );
-});
+export interface DynamicComponentProps {
+  value: any;
+  /**
+   * `Filter` 组件左侧选择的字段
+   */
+  collectionField: CollectionFieldOptions_deprecated;
+  onChange: (value: any) => void;
+  renderSchemaComponent: () => React.JSX.Element;
+}
 
-export const DynamicComponent = (props) => {
-  const { dynamicComponent } = useContext(FilterContext);
+interface Props {
+  schema: any;
+  value: any;
+  collectionField: CollectionFieldOptions_deprecated;
+  onChange: (value: any) => void;
+  style?: React.CSSProperties;
+  componentProps?: any;
+}
+
+export const DynamicComponent = (props: Props) => {
+  const { dynamicComponent, disabled } = useContext(FilterContext);
   const component = useComponent(dynamicComponent);
   const form = useMemo(() => {
     return createForm({
       values: {
         value: props.value,
       },
+      disabled,
       effects() {
         onFieldValueChange('value', (field) => {
           props?.onChange?.(field.value);
         });
       },
     });
-  }, [JSON.stringify(props.schema), JSON.stringify(props.value)]);
-  const renderSchemaComponent = () => {
+  }, [JSON.stringify(props.value), props.schema]);
+  const renderSchemaComponent = useCallback(() => {
+    const componentProps = merge(props?.schema?.['x-component-props'] || {}, props.componentProps || {});
     return (
       <FieldContext.Provider value={null}>
         <SchemaComponent
           schema={{
             'x-component': 'Input',
             ...props.schema,
-            'x-component-props': merge(props?.schema?.['x-component-props'] || {}, {
+            'x-component-props': merge(componentProps, {
               style: {
                 minWidth: 150,
+                ...props.style,
               },
+              utc: false,
+              underFilter: true,
             }),
             name: 'value',
             'x-read-pretty': false,
             'x-validator': undefined,
             'x-decorator': undefined,
-          }}
-          components={{
-            VariableCascader,
+            'x-disabled': disabled,
           }}
         />
       </FieldContext.Provider>
     );
-  };
+  }, [props.schema, disabled]);
   return (
     <FormContext.Provider value={form}>
       {component
-        ? React.createElement(component, {
+        ? React.createElement<DynamicComponentProps>(component, {
             value: props.value,
+            collectionField: props.collectionField,
             onChange: props?.onChange,
             renderSchemaComponent,
           })
@@ -103,3 +90,5 @@ export const DynamicComponent = (props) => {
     </FormContext.Provider>
   );
 };
+
+export const FilterDynamicComponent = DynamicComponent;

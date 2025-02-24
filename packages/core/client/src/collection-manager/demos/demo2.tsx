@@ -1,15 +1,16 @@
-import React from 'react';
-import { observer, ISchema, useForm } from '@formily/react';
+
+
+import { FormItem, Input } from '@formily/antd-v5';
+import { ISchema, observer, useForm } from '@formily/react';
 import {
+  Action,
+  CollectionField,
+  CollectionProvider_deprecated,
+  Form,
   SchemaComponent,
   SchemaComponentProvider,
-  Form,
-  Action,
-  CollectionProvider,
-  CollectionField,
 } from '@nocobase/client';
-import 'antd/dist/antd.css';
-import { FormItem, Input } from '@formily/antd';
+import React from 'react';
 
 export default observer(() => {
   const collection = {
@@ -116,9 +117,9 @@ export default observer(() => {
 
   return (
     <SchemaComponentProvider scope={{ useSubmit }} components={{ Action, Form, CollectionField, Input, FormItem }}>
-      <CollectionProvider collection={collection}>
+      <CollectionProvider_deprecated collection={collection}>
         <SchemaComponent schema={schema} />
-      </CollectionProvider>
+      </CollectionProvider_deprecated>
     </SchemaComponentProvider>
   );
 });

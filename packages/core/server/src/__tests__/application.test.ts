@@ -1,6 +1,17 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import { vi } from 'vitest';
 import supertest from 'supertest';
 import { Application } from '../application';
 import { Plugin } from '../plugin';
+import longJson from './fixtures/long-json';
 
 class MyPlugin extends Plugin {
   async load() {}
@@ -18,8 +29,8 @@ describe('application', () => {
     app = new Application({
       database: {
         dialect: 'sqlite',
-        dialectModule: require('sqlite3'),
         storage: ':memory:',
+        logging: false,
       },
       resourcer: {
         prefix: '/api',
@@ -28,6 +39,7 @@ describe('application', () => {
       dataWrapping: false,
       registerActions: false,
     });
+
     app.resourcer.registerActionHandlers({
       list: async (ctx, next) => {
         ctx.body = [1, 2];
@@ -46,7 +58,23 @@ describe('application', () => {
   });
 
   afterEach(async () => {
-    return app.db.close();
+    return app.destroy();
+  });
+
+  it('should request long json', async () => {
+    app.resourcer.define({
+      name: 'test',
+      actions: {
+        test: async (ctx, next) => {
+          ctx.body = ctx.request.body;
+          await next();
+        },
+      },
+    });
+
+    const response = await agent.post('/api/test:test').send(longJson).set('Content-Type', 'application/json');
+
+    expect(response.statusCode).toBe(200);
   });
 
   it('resourcer.define', async () => {
@@ -91,39 +119,26 @@ describe('application', () => {
     expect(response.body).toEqual([1, 2]);
   });
 
-  it.skip('db.middleware', async () => {
-    const index = app.middleware.findIndex((m) => m.name === 'db2resource');
-    app.middleware.splice(index, 0, async (ctx, next) => {
-      app.collection({
-        name: 'tests',
-      });
-      await next();
-    });
-    const response = await agent.get('/api/tests');
-    expect(response.body).toEqual([1, 2]);
-  });
+  it('should call application with command', async () => {
+    await app.runCommand('start');
+    const jestFn = vi.fn();
 
-  it.skip('db.middleware', async () => {
-    const index = app.middleware.findIndex((m) => m.name === 'db2resource');
-    app.middleware.splice(index, 0, async (ctx, next) => {
-      app.collection({
-        name: 'bars',
-      });
-      app.collection({
-        name: 'foos',
-        fields: [
-          {
-            type: 'hasMany',
-            name: 'bars',
-          },
-        ],
-      });
-      await next();
+    app.on('beforeInstall', async () => {
+      jestFn();
     });
 
-    const response = await agent.get('/api/foos/1/bars');
-    expect(response.body).toEqual([1, 2]);
-  });
+    const runningJest = vi.fn();
 
-  it('should create application with plugins config', async () => {});
+    app.on('maintaining', ({ status }) => {
+      if (status === 'command_running') {
+        runningJest();
+      }
+    });
+
+    await app.runCommand('install');
+
+    expect(runningJest).toBeCalledTimes(1);
+
+    expect(jestFn).toBeCalledTimes(1);
+  });
 });

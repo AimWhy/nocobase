@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { ACL, DefineOptions } from './acl';
 import { ACLAvailableStrategy, AvailableStrategyOptions } from './acl-available-strategy';
 import { ACLResource } from './acl-resource';
@@ -10,6 +19,7 @@ export interface RoleActionParams {
   own?: boolean;
   whitelist?: string[];
   blacklist?: string[];
+
   [key: string]: any;
 }
 
@@ -17,12 +27,26 @@ export interface ResourceActionsOptions {
   [actionName: string]: RoleActionParams;
 }
 
+/**
+ * @internal
+ */
 export class ACLRole {
   strategy: string | AvailableStrategyOptions;
   resources = new Map<string, ACLResource>();
   snippets: Set<string> = new Set();
+  _snippetCache = {
+    params: null,
+    result: null,
+  };
 
-  constructor(public acl: ACL, public name: string) {}
+  constructor(
+    public acl: ACL,
+    public name: string,
+  ) {}
+
+  _serializeSet(set: Set<string>) {
+    return JSON.stringify([...set].sort());
+  }
 
   getResource(name: string): ACLResource | undefined {
     return this.resources.get(name);
@@ -56,7 +80,8 @@ export class ACLRole {
   }
 
   public grantAction(path: string, options?: RoleActionParams) {
-    let { resource, resourceName, actionName } = this.getResourceActionFromPath(path);
+    let { resource } = this.getResourceActionFromPath(path);
+    const { resourceName, actionName } = this.getResourceActionFromPath(path);
 
     if (!resource) {
       resource = new ACLResource({
@@ -81,6 +106,12 @@ export class ACLRole {
   }
 
   public effectiveSnippets(): { allowed: Array<string>; rejected: Array<string> } {
+    const currentParams = this._serializeSet(this.snippets);
+
+    if (this._snippetCache.params === currentParams) {
+      return this._snippetCache.result;
+    }
+
     const allowedSnippets = new Set<string>();
     const rejectedSnippets = new Set<string>();
 
@@ -103,10 +134,16 @@ export class ACLRole {
 
     // get difference of allowed and rejected snippets
     const effectiveSnippets = new Set([...allowedSnippets].filter((x) => !rejectedSnippets.has(x)));
-    return {
-      allowed: [...effectiveSnippets],
-      rejected: [...rejectedSnippets],
+
+    this._snippetCache = {
+      params: currentParams,
+      result: {
+        allowed: [...effectiveSnippets],
+        rejected: [...rejectedSnippets],
+      },
     };
+
+    return this._snippetCache.result;
   }
 
   public snippetAllowed(actionPath: string) {
@@ -162,6 +199,7 @@ export class ACLRole {
     const resource = this.resources.get(resourceName);
 
     let action = null;
+
     if (resource) {
       action = resource.getAction(actionName);
     }

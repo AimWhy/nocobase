@@ -1,122 +1,178 @@
-import { css } from '@emotion/css';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { observer, RecursionField, useField, useFieldSchema } from '@formily/react';
 import { Drawer } from 'antd';
 import classNames from 'classnames';
-import React from 'react';
-import { createPortal } from 'react-dom';
-import { useTranslation } from 'react-i18next';
+// @ts-ignore
+import React, { FC, startTransition, useCallback, useEffect, useMemo, useState } from 'react';
+import { ErrorBoundary, FallbackProps } from 'react-error-boundary';
+import { NocoBaseRecursionField } from '../../../formily/NocoBaseRecursionField';
+import { ErrorFallback } from '../error-fallback';
+import { useCurrentPopupContext } from '../page/PagePopups';
+import { TabsContextProvider, useTabsContext } from '../tabs/context';
+import { useStyles } from './Action.Drawer.style';
+import { ActionContextNoRerender } from './context';
 import { useActionContext } from './hooks';
-import { ComposedActionDrawer } from './types';
-import { OpenSize } from './';
+import { useSetAriaLabelForDrawer } from './hooks/useSetAriaLabelForDrawer';
+import { ActionDrawerProps, ComposedActionDrawer, OpenSize } from './types';
+import { useZIndexContext, zIndexContext } from './zIndexContext';
+
+const MemoizeRecursionField = React.memo(RecursionField);
+MemoizeRecursionField.displayName = 'MemoizeRecursionField';
+
+const DrawerErrorFallback: React.FC<FallbackProps> = (props) => {
+  const { visible, setVisible } = useActionContext();
+  return (
+    <Drawer open={visible} onClose={() => setVisible(false, true)} width="50%">
+      <ErrorFallback {...props} />
+    </Drawer>
+  );
+};
 
 const openSizeWidthMap = new Map<OpenSize, string>([
   ['small', '30%'],
   ['middle', '50%'],
   ['large', '70%'],
 ]);
-export const ActionDrawer: ComposedActionDrawer = observer((props) => {
-  const { footerNodeName = 'Action.Drawer.Footer', ...others } = props;
-  const { t } = useTranslation();
-  const { visible, setVisible, openSize = 'middle' } = useActionContext();
-  const schema = useFieldSchema();
-  const field = useField();
-  const footerSchema = schema.reduceProperties((buf, s) => {
-    if (s['x-component'] === footerNodeName) {
-      return s;
+
+const ActionDrawerContent: FC<{ footerNodeName: string; field: any; schema: any }> = React.memo(
+  ({ footerNodeName, field, schema }) => {
+    // Improve the speed of opening the drawer
+    const [deferredVisible, setDeferredVisible] = useState(false);
+    const filterOutFooterNode = useCallback(
+      (s) => {
+        return s['x-component'] !== footerNodeName;
+      },
+      [footerNodeName],
+    );
+
+    useEffect(() => {
+      startTransition(() => {
+        setDeferredVisible(true);
+      });
+    }, []);
+
+    if (!deferredVisible) {
+      return null;
     }
-    return buf;
-  });
-  return (
-    <>
-      {createPortal(
-        <div
-          onClick={(e) => {
-            e.stopPropagation();
-          }}
-        >
-          <Drawer
-            width={openSizeWidthMap.get(openSize)}
-            title={field.title}
-            {...others}
-            destroyOnClose
-            visible={visible}
-            onClose={() => setVisible(false, true)}
-            className={classNames(
-              others.className,
-              css`
-                &.nb-action-popup {
-                  .ant-drawer-header {
-                    display: none;
-                  }
 
-                  .ant-drawer-body {
-                    padding-top: 14px;
-                  }
+    return (
+      <NocoBaseRecursionField
+        basePath={field.address}
+        schema={schema}
+        onlyRenderProperties
+        filterProperties={filterOutFooterNode}
+      />
+    );
+  },
+);
 
-                  .ant-drawer-content {
-                    background: #f0f2f5;
-                  }
-                }
+ActionDrawerContent.displayName = 'ActionDrawerContent';
 
-                &.nb-record-picker-selector {
-                  .nb-block-item {
-                    margin-bottom: 24px;
+export const InternalActionDrawer: React.FC<ActionDrawerProps> = observer(
+  (props) => {
+    const { footerNodeName = 'Action.Drawer.Footer', zIndex: _zIndex, onClose: onCloseFromProps, ...others } = props;
+    const { visible, setVisible, openSize = 'middle', drawerProps } = useActionContext();
+    const schema = useFieldSchema();
+    const field = useField();
+    const { componentCls, hashId } = useStyles();
+    const tabContext = useTabsContext();
+    const parentZIndex = useZIndexContext();
+    const footerSchema = schema.reduceProperties((buf, s) => {
+      if (s['x-component'] === footerNodeName) {
+        return s;
+      }
+      return buf;
+    });
+    const { hidden } = useCurrentPopupContext();
+    const rootStyle: React.CSSProperties = useMemo(() => {
+      return {
+        ...drawerProps?.style,
+        ...others?.style,
+        display: hidden ? 'none' : 'block',
+      };
+    }, [hidden, drawerProps?.style, others?.style]);
 
-                    .general-schema-designer {
-                      top: -8px;
-                      bottom: -8px;
-                      left: -8px;
-                      right: -8px;
-                    }
-                  }
-                }
-              `,
-            )}
-            footer={
-              footerSchema && (
-                <div
-                  className={css`
-                    display: flex;
-                    justify-content: flex-end;
-                    width: 100%;
+    if (process.env.__E2E__) {
+      useSetAriaLabelForDrawer(visible);
+    }
 
-                    .ant-btn {
-                      margin-right: 8px;
-                    }
-                  `}
-                >
-                  <RecursionField
-                    basePath={field.address}
-                    schema={schema}
-                    onlyRenderProperties
-                    filterProperties={(s) => {
-                      return s['x-component'] === footerNodeName;
-                    }}
-                  />
-                </div>
-              )
-            }
-          >
-            <RecursionField
-              basePath={field.address}
-              schema={schema}
-              onlyRenderProperties
-              filterProperties={(s) => {
-                return s['x-component'] !== footerNodeName;
-              }}
-            />
-          </Drawer>
-        </div>,
-        document.body,
-      )}
-    </>
-  );
-});
+    const zIndex = _zIndex || parentZIndex + (props.level || 0);
 
-ActionDrawer.Footer = observer(() => {
-  const field = useField();
-  const schema = useFieldSchema();
-  return <RecursionField basePath={field.address} schema={schema} onlyRenderProperties />;
-});
+    const onClose = useCallback(
+      (e) => {
+        setVisible(false, true);
+        onCloseFromProps?.(e);
+      },
+      [setVisible, onCloseFromProps],
+    );
+    const keepFooterNode = useCallback(
+      (s) => {
+        return s['x-component'] === footerNodeName;
+      },
+      [footerNodeName],
+    );
+
+    return (
+      <ActionContextNoRerender>
+        <zIndexContext.Provider value={zIndex}>
+          <TabsContextProvider {...tabContext} tabBarExtraContent={null}>
+            <Drawer
+              zIndex={zIndex}
+              width={openSizeWidthMap.get(openSize)}
+              title={field.title}
+              {...others}
+              {...drawerProps}
+              rootStyle={rootStyle}
+              destroyOnClose
+              open={visible}
+              onClose={onClose}
+              rootClassName={classNames(componentCls, hashId, drawerProps?.className, others.className, 'reset')}
+              footer={
+                footerSchema && (
+                  <div className={'footer'}>
+                    <MemoizeRecursionField
+                      basePath={field.address}
+                      schema={schema}
+                      onlyRenderProperties
+                      filterProperties={keepFooterNode}
+                    />
+                  </div>
+                )
+              }
+            >
+              <ActionDrawerContent footerNodeName={footerNodeName} field={field} schema={schema} />
+            </Drawer>
+          </TabsContextProvider>
+        </zIndexContext.Provider>
+      </ActionContextNoRerender>
+    );
+  },
+  { displayName: 'InternalActionDrawer' },
+);
+
+export const ActionDrawer: ComposedActionDrawer = React.memo((props) => (
+  <ErrorBoundary FallbackComponent={DrawerErrorFallback} onError={console.log}>
+    <InternalActionDrawer {...props} />
+  </ErrorBoundary>
+));
+
+ActionDrawer.displayName = 'ActionDrawer';
+
+ActionDrawer.Footer = observer(
+  () => {
+    const field = useField();
+    const schema = useFieldSchema();
+    return <MemoizeRecursionField basePath={field.address} schema={schema} onlyRenderProperties />;
+  },
+  { displayName: 'ActionDrawer.Footer' },
+);
 
 export default ActionDrawer;

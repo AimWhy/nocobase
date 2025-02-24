@@ -1,28 +1,30 @@
-import React from 'react';
-import { SchemaComponentOptions } from '../';
-import {
-  CollectionField,
-  CollectionFieldProvider,
-  CollectionProvider,
-  ResourceActionProvider,
-  useDataSourceFromRAC
-} from './';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import React, { useMemo } from 'react';
+import { SchemaComponentOptions } from '..';
+import { CollectionProvider_deprecated } from './CollectionProvider_deprecated';
+import { ResourceActionProvider, useDataSourceFromRAC } from './ResourceActionProvider';
 import * as hooks from './action-hooks';
-import { DataSourceProvider, ds, SubFieldDataSourceProvider } from './sub-table';
+import { DataSourceProvider_deprecated, SubFieldDataSourceProvider_deprecated, ds } from './sub-table';
+
+const components = {
+  SubFieldDataSourceProvider_deprecated,
+  DataSourceProvider_deprecated,
+  CollectionProvider_deprecated,
+  ResourceActionProvider,
+};
 
 export const CollectionManagerSchemaComponentProvider: React.FC = (props) => {
+  const scope = useMemo(() => ({ cm: { ...hooks, useDataSourceFromRAC }, ds }), []);
   return (
-    <SchemaComponentOptions
-      scope={{ cm: { ...hooks, useDataSourceFromRAC }, ds }}
-      components={{
-        SubFieldDataSourceProvider,
-        DataSourceProvider,
-        CollectionField,
-        CollectionFieldProvider,
-        CollectionProvider,
-        ResourceActionProvider,
-      }}
-    >
+    <SchemaComponentOptions scope={scope} components={components}>
       {props.children}
     </SchemaComponentOptions>
   );

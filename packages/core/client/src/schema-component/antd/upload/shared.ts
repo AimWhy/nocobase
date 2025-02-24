@@ -1,64 +1,82 @@
-import { Field } from '@formily/core';
-import { useField, useForm } from '@formily/react';
-import { reaction } from '@formily/reactive';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { isArr, isValid, toArr as toArray } from '@formily/shared';
-import { UploadChangeParam } from 'antd/lib/upload';
-import { UploadFile } from 'antd/lib/upload/interface';
-import { useEffect } from 'react';
+import { UploadFile } from 'antd/es/upload/interface';
+import { useTranslation } from 'react-i18next';
+import mime from 'mime';
+import match from 'mime-match';
+import React, { useCallback } from 'react';
 import { useAPIClient } from '../../../api-client';
-import { UPLOAD_PLACEHOLDER } from './placeholder';
+import { UNKNOWN_FILE_ICON, UPLOAD_PLACEHOLDER } from './placeholder';
 import type { IUploadProps, UploadProps } from './type';
 
-export const isImage = (extName: string) => {
-  var reg = /\.(png|jpg|gif|jpeg|webp)$/;
-  return reg.test(extName);
-};
+export const FILE_SIZE_LIMIT_DEFAULT = 1024 * 1024 * 20;
 
-export const toMap = (fileList: any) => {
-  if (!fileList) {
-    return [];
-  }
-  if (typeof fileList !== 'object') {
-    return [];
-  }
-  let list = fileList;
-  if (!Array.isArray(fileList)) {
-    if (Object.keys({ ...fileList }).length === 0) {
-      return [];
-    }
-    list = [fileList];
-  }
-  return list.map((item) => {
-    return [item.id || item.uid, toItem(item)];
-  });
-};
+export interface FileModel {
+  id: number;
+  filename: string;
+  path: string;
+  title: string;
+  url: string;
+  extname: string;
+  size: number;
+  mimetype: string;
+}
 
-export const toImages = (fileList) => {
-  if (!fileList) {
-    return [];
-  }
-  if (typeof fileList !== 'object') {
-    return [];
-  }
-  if (Object.keys(fileList).length === 0) {
-    return [];
-  }
-  let list = fileList;
-  if (!Array.isArray(fileList) && typeof fileList === 'object') {
-    list = [fileList];
-  }
-  return list.map((item) => {
-    return {
-      ...item,
-      title: item.title || item.name,
-      imageUrl: getImageByUrl(item.url, {
-        exclude: ['.png', '.jpg', '.jpeg', '.gif'],
-      }),
-    };
-  });
-};
+export interface PreviewerProps {
+  index: number;
+  list: FileModel[];
+  onSwitchIndex(index): void;
+}
 
-export const toArr = (value) => {
+export interface AttachmentFileType {
+  match(file: any): boolean;
+  getThumbnailURL?(file: any): string;
+  ThumbnailPreviewer?: React.ComponentType<{ file: FileModel }>;
+  Previewer?: React.ComponentType<PreviewerProps>;
+}
+
+export class AttachmentFileTypes {
+  types: AttachmentFileType[] = [];
+  add(type: AttachmentFileType) {
+    // NOTE: use unshift to make sure the custom type has higher priority
+    this.types.unshift(type);
+  }
+  getTypeByFile(file): Omit<AttachmentFileType, 'match'> {
+    return this.types.find((type) => type.match(file));
+  }
+}
+
+/**
+ * @experimental
+ */
+export const attachmentFileTypes = new AttachmentFileTypes();
+
+export function matchMimetype(file: FileModel | UploadFile<any>, type: string) {
+  if (!file) {
+    return false;
+  }
+  if ((<UploadFile>file).originFileObj) {
+    return match((<UploadFile>file).type, type);
+  }
+  if ((<FileModel>file).mimetype) {
+    return match((<FileModel>file).mimetype, type);
+  }
+  if (file.url) {
+    const [fileUrl] = file.url.split('?');
+    return match(mime.getType(fileUrl) || '', type);
+  }
+  return false;
+}
+
+const toArr = (value) => {
   if (!isValid(value)) {
     return [];
   }
@@ -68,7 +86,7 @@ export const toArr = (value) => {
   return toArray(value);
 };
 
-export const testOpts = (ext: RegExp, options: { exclude?: string[]; include?: string[] }) => {
+const testOpts = (ext: RegExp, options: { exclude?: string[]; include?: string[] }) => {
   if (options && isArr(options.include)) {
     return options.include.some((url) => ext.test(url));
   }
@@ -80,97 +98,55 @@ export const testOpts = (ext: RegExp, options: { exclude?: string[]; include?: s
   return true;
 };
 
-export const getImageByUrl = (url: string, options: any) => {
+export function getThumbnailPlaceholderURL(file, options: any = {}) {
   for (let i = 0; i < UPLOAD_PLACEHOLDER.length; i++) {
-    if (UPLOAD_PLACEHOLDER[i].ext.test(url) && testOpts(UPLOAD_PLACEHOLDER[i].ext, options)) {
-      return UPLOAD_PLACEHOLDER[i].icon || url;
-    }
-  }
-  return url;
-};
-
-export const getURL = (target: any) => {
-  return target?.['url'] || target?.['downloadURL'] || target?.['imgURL'];
-};
-export const getThumbURL = (target: any) => {
-  return target?.['thumbUrl'] || target?.['url'] || target?.['downloadURL'] || target?.['imgURL'];
-};
-
-export const getErrorMessage = (target: any) => {
-  return target?.errorMessage ||
-    target?.errMsg ||
-    target?.errorMsg ||
-    target?.message ||
-    typeof target?.error === 'string'
-    ? target.error
-    : '';
-};
-
-export const getState = (target: any) => {
-  if (target?.success === false) return 'error';
-  if (target?.failed === true) return 'error';
-  if (target?.error) return 'error';
-  return target?.state || target?.status;
-};
-
-export const normalizeFileList = (fileList: UploadFile[]) => {
-  if (fileList && fileList.length) {
-    return fileList.map((file, index) => {
-      return {
-        ...file,
-        uid: file.uid || `${index}`,
-        status: getState(file.response) || getState(file),
-        url: getURL(file) || getURL(file?.response),
-        thumbUrl: getImageByUrl(getThumbURL(file) || getThumbURL(file?.response), {
-          exclude: ['.png', '.jpg', '.jpeg', '.gif'],
-        }),
-      };
-    });
-  }
-  return [];
-};
-
-export const useValidator = (validator: (value: any) => string) => {
-  const field = useField<Field>();
-  useEffect(() => {
-    const dispose = reaction(
-      () => field.value,
-      (value) => {
-        const message = validator(value);
-        field.setFeedback({
-          type: 'error',
-          code: 'UploadError',
-          messages: message ? [message] : [],
-        });
-      },
-    );
-    return () => {
-      dispose();
-    };
-  }, []);
-};
-
-export const useUploadValidator = (serviceErrorMessage = 'Upload Service Error') => {
-  useValidator((value) => {
-    const list = toArr(value);
-    for (let i = 0; i < list.length; i++) {
-      if (list[i]?.status === 'error') {
-        return getErrorMessage(list[i]?.response) || getErrorMessage(list[i]) || serviceErrorMessage;
+    if (UPLOAD_PLACEHOLDER[i].ext.test(file.extname || file.filename || file.url || file.name)) {
+      if (testOpts(UPLOAD_PLACEHOLDER[i].ext, options)) {
+        return UPLOAD_PLACEHOLDER[i].icon || UNKNOWN_FILE_ICON;
+      } else {
+        return file.name;
       }
     }
-  });
-};
+  }
+  return UNKNOWN_FILE_ICON;
+}
 
-export function useUploadProps<T extends IUploadProps = UploadProps>({ serviceErrorMessage, ...props }: T) {
-  useUploadValidator(serviceErrorMessage);
-  const onChange = (param: UploadChangeParam<UploadFile>) => {
-    props.onChange?.(normalizeFileList([...param.fileList]));
+export function getResponseMessage({ error, response }: UploadFile<any>) {
+  if (error instanceof Error && 'isAxiosError' in error) {
+    // @ts-ignore
+    if (error.response) {
+      // @ts-ignore
+      return error.response.data?.errors?.map?.((item) => item?.message).join(', ');
+    } else {
+      return error.message;
+    }
+  }
+  if (!response) {
+    return '';
+  }
+  if (typeof response === 'string') {
+    return response;
+  }
+  const { errors } = response.data ?? {};
+  if (!errors?.length) {
+    return '';
+  }
+  return errors.map((item) => item?.message).join(', ');
+}
+
+export function normalizeFile(file: UploadFile & Record<string, any>) {
+  const response = getResponseMessage(file);
+  return {
+    ...file,
+    title: file.name,
+    response,
   };
+}
 
+export function useUploadProps<T extends IUploadProps = UploadProps>(props: T) {
   const api = useAPIClient();
 
   return {
-    ...props,
     // in customRequest method can't modify form's status(e.g: form.disabled=true )
     // that will be trigger Upload component（actual Underlying is AjaxUploader component ）'s  componentWillUnmount method
     // which will cause multiple files upload fail
@@ -182,6 +158,7 @@ export function useUploadProps<T extends IUploadProps = UploadProps>({ serviceEr
         });
       }
       formData.append(filename, file);
+      // eslint-disable-next-line promise/catch-or-return
       api.axios
         .post(action, formData, {
           withCredentials,
@@ -202,30 +179,91 @@ export function useUploadProps<T extends IUploadProps = UploadProps>({ serviceEr
         },
       };
     },
-    onChange,
+    ...props,
   };
 }
 
+export function toValueItem(data) {
+  return data;
+}
+
 export const toItem = (file) => {
+  if (typeof file === 'string') {
+    return {
+      url: file,
+    };
+  }
   if (file?.response?.data) {
-    file = file.response.data;
+    file = {
+      uid: file.uid,
+      ...file.response.data,
+    };
   }
   return {
     ...file,
     id: file.id || file.uid,
     title: file.title || file.name,
-    imageUrl: getImageByUrl(file.url, {
-      exclude: ['.png', '.jpg', '.jpeg', '.gif'],
-    }),
   };
 };
 
 export const toFileList = (fileList: any) => {
-  return toArr(fileList).map(toItem);
+  return toArr(fileList).filter(Boolean).map(toItem);
 };
 
-export const toValue = (fileList: any) => {
-  return toArr(fileList)
-    .filter((file) => !file.response || file.status === 'done')
-    .map((file) => file?.response?.data || file);
+const Rules: Record<string, RuleFunction> = {
+  size(file, options: number): null | string {
+    const size = options ?? FILE_SIZE_LIMIT_DEFAULT;
+    if (size === 0) {
+      return null;
+    }
+    return file.size <= size ? null : 'File size exceeds the limit';
+  },
+  mimetype(file, options: string | string[] = '*'): null | string {
+    const pattern = options.toString().trim();
+    if (!pattern || pattern === '*') {
+      return null;
+    }
+    return pattern.split(',').filter(Boolean).some(match(file.type)) ? null : 'File type is not allowed';
+  },
 };
+
+type RuleFunction = (file: UploadFile, options: any) => string | null;
+
+export function validate(file, rules: Record<string, any>) {
+  if (!rules) {
+    return null;
+  }
+  const ruleKeys = Object.keys(rules);
+  if (!ruleKeys.length) {
+    return null;
+  }
+  for (const key of ruleKeys) {
+    const error = Rules[key](file, rules[key]);
+    if (error) {
+      return error;
+    }
+  }
+  return null;
+}
+
+export function useBeforeUpload(rules) {
+  const { t } = useTranslation();
+
+  return useCallback(
+    (file) => {
+      const error = validate(file, rules);
+
+      if (error) {
+        file.status = 'error';
+        file.response = t(error);
+      } else {
+        if (file.status === 'error') {
+          delete file.status;
+          delete file.response;
+        }
+      }
+      return !error;
+    },
+    [rules],
+  );
+}

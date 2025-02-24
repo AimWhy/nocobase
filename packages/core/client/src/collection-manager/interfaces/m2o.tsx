@@ -1,35 +1,38 @@
-import { ISchema } from '@formily/react';
-import { cloneDeep } from 'lodash';
-import {
-  constraintsProps,
-  recordPickerSelector,
-  recordPickerViewer,
-  relationshipType,
-  reverseFieldProperties,
-} from './properties';
-import { IField } from './types';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
 
-export const m2o: IField = {
-  name: 'm2o',
-  type: 'object',
-  group: 'relation',
-  order: 5,
-  title: '{{t("Many to one")}}',
-  description: '{{t("Many to one description")}}',
-  isAssociation: true,
-  default: {
+import { ISchema } from '@formily/react';
+import { CollectionFieldInterface } from '../../data-source/collection-field-interface/CollectionFieldInterface';
+import { getUniqueKeyFromCollection } from './utils';
+import { constraintsProps, relationshipType, reverseFieldProperties } from './properties';
+
+export class M2OFieldInterface extends CollectionFieldInterface {
+  name = 'm2o';
+  type = 'object';
+  group = 'relation';
+  order = 5;
+  title = '{{t("Many to one")}}';
+  description = '{{t("Many to one description")}}';
+  isAssociation = true;
+  default = {
     type: 'belongsTo',
     // name,
     uiSchema: {
       // title,
-      'x-component': 'RecordPicker',
+      'x-component': 'AssociationField',
       'x-component-props': {
         // mode: 'tags',
         multiple: false,
-        fieldNames: {
-          label: 'id',
-          value: 'id',
-        },
+        // fieldNames: {
+        //   label: 'id',
+        //   value: 'id',
+        // },
       },
     },
     reverseField: {
@@ -38,49 +41,39 @@ export const m2o: IField = {
       // name,
       uiSchema: {
         // title,
-        'x-component': 'RecordPicker',
+        'x-component': 'AssociationField',
         'x-component-props': {
           // mode: 'tags',
           multiple: true,
-          fieldNames: {
-            label: 'id',
-            value: 'id',
-          },
+          // fieldNames: {
+          //   label: 'id',
+          //   value: 'id',
+          // },
         },
       },
     },
-  },
-  schemaInitialize(schema: ISchema, { block, readPretty }) {
-    if (block === 'Form') {
-      if (schema['x-component'] === 'AssociationSelect') {
-        Object.assign(schema, {
-          type: 'string',
-          'x-designer': 'AssociationSelect.Designer',
-        });
-      } else {
-        schema.type = 'string';
-        schema['properties'] = {
-          viewer: cloneDeep(recordPickerViewer),
-          selector: cloneDeep(recordPickerSelector),
-        };
-      }
-      return schema;
-    }
-    if (readPretty) {
-      schema['properties'] = {
-        viewer: cloneDeep(recordPickerViewer),
-      };
-    } else {
-      schema['properties'] = {
-        selector: cloneDeep(recordPickerSelector),
-      };
-    }
+  };
+  availableTypes = ['belongsTo'];
+  schemaInitialize(schema: ISchema, { field, block, readPretty, targetCollection }) {
+    // schema['type'] = 'object';
+    schema['x-component-props'] = schema['x-component-props'] || {};
+    schema['x-component-props'].fieldNames = schema['x-component-props'].fieldNames || {
+      value: getUniqueKeyFromCollection(targetCollection),
+    };
+    schema['x-component-props'].fieldNames.label =
+      schema['x-component-props'].fieldNames?.label ||
+      targetCollection?.titleField ||
+      getUniqueKeyFromCollection(targetCollection);
+
     if (['Table', 'Kanban'].includes(block)) {
       schema['x-component-props'] = schema['x-component-props'] || {};
       schema['x-component-props']['ellipsis'] = true;
+      // 预览文件时需要的参数
+      schema['x-component-props']['size'] = 'small';
     }
-  },
-  properties: {
+  }
+
+  properties = {
     'uiSchema.title': {
       type: 'string',
       title: '{{t("Field display name")}}',
@@ -153,7 +146,7 @@ export const m2o: IField = {
                   description:
                     "{{t('Randomly generated and can be modified. Support letters, numbers and underscores, must start with an letter.')}}",
                   'x-decorator': 'FormItem',
-                  'x-component': 'Input',
+                  'x-component': 'ForeignKey',
                   'x-validator': 'uid',
                   'x-disabled': '{{ !createOnly }}',
                 },
@@ -164,8 +157,9 @@ export const m2o: IField = {
               'x-component': 'Grid.Col',
               properties: {
                 targetKey: {
-                  type: 'void',
+                  type: 'string',
                   title: '{{t("Target key")}}',
+                  description: "{{t('Field values must be unique.')}}",
                   'x-decorator': 'FormItem',
                   'x-component': 'TargetKey',
                   'x-disabled': '{{ !createOnly }}',
@@ -178,8 +172,9 @@ export const m2o: IField = {
     },
     ...constraintsProps,
     ...reverseFieldProperties,
-  },
-  filterable: {
+  };
+
+  filterable = {
     nested: true,
     children: [
       // {
@@ -196,5 +191,5 @@ export const m2o: IField = {
       //   },
       // },
     ],
-  },
-};
+  };
+}

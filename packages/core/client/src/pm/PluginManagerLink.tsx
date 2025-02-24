@@ -1,86 +1,82 @@
-import { AppstoreAddOutlined, SettingOutlined } from '@ant-design/icons';
-import { Dropdown, Menu } from 'antd';
-import React, { useContext, useState } from 'react';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import { ApiOutlined, SettingOutlined } from '@ant-design/icons';
+import { Button, Dropdown, Tooltip } from 'antd';
+import React, { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useHistory } from 'react-router-dom';
-import { useACLRoleContext } from '../acl/ACLProvider';
-import { PluginManager } from '../plugin-manager';
-import { ActionContext, useCompile } from '../schema-component';
-import { getPluginsTabs, SettingsCenterContext } from './index';
+import { Link } from 'react-router-dom';
+import { useApp, useNavigateNoUpdate } from '../application';
+import { useCompile } from '../schema-component';
+import { useToken } from '../style';
 
 export const PluginManagerLink = () => {
-  const [visible, setVisible] = useState(false);
   const { t } = useTranslation();
-  const history = useHistory();
+  const navigate = useNavigateNoUpdate();
+  const { token } = useToken();
   return (
-    <ActionContext.Provider value={{ visible, setVisible }}>
-      <PluginManager.Toolbar.Item
-        icon={<AppstoreAddOutlined />}
+    <Tooltip title={t('Plugin manager')}>
+      <Button
+        data-testid={'plugin-manager-button'}
+        icon={<ApiOutlined style={{ color: token.colorTextHeaderMenu }} />}
         title={t('Plugin manager')}
         onClick={() => {
-          history.push('/admin/pm/list');
+          navigate('/admin/pm/list');
         }}
       />
-    </ActionContext.Provider>
+    </Tooltip>
   );
 };
 
-const getBookmarkTabs = (data) => {
-  const bookmarkTabs = [];
-  data.forEach((plugin) => {
-    const tabs = plugin.tabs;
-    tabs.forEach((tab) => {
-      tab.isBookmark && tab.isAllow && bookmarkTabs.push({ ...tab, path: `${plugin.key}/${tab.key}` });
-    });
-  });
-  return bookmarkTabs;
-};
 export const SettingsCenterDropdown = () => {
-  const { snippets = [] } = useACLRoleContext();
-  const [visible, setVisible] = useState(false);
-  const { t } = useTranslation();
   const compile = useCompile();
-  const history = useHistory();
-  const itemData = useContext(SettingsCenterContext);
-  const pluginsTabs = getPluginsTabs(itemData, snippets);
-  const bookmarkTabs = getBookmarkTabs(pluginsTabs);
+  const { t } = useTranslation();
+  const { token } = useToken();
+  const app = useApp();
+  const settingItems = useMemo(() => {
+    const settings = app.pluginSettingsManager.getList();
+    return settings
+      .filter((v) => v.isTopLevel !== false)
+      .map((setting) => {
+        return {
+          key: setting.name,
+          icon: setting.icon,
+          label: setting.link ? (
+            <div onClick={() => window.open(setting.link)}>{compile(setting.title)}</div>
+          ) : (
+            <Link to={setting.path}>{compile(setting.title)}</Link>
+          ),
+        };
+      });
+  }, [app, t]);
+
+  useEffect(() => {
+    return () => {
+      app.pluginSettingsManager.clearCache();
+    };
+  }, [app.pluginSettingsManager]);
+
   return (
-    <ActionContext.Provider value={{ visible, setVisible }}>
-      <Dropdown
-        placement="bottom"
-        overlay={
-          <Menu>
-            <Menu.ItemGroup title={t('Bookmark')}>
-              {bookmarkTabs.map((tab) => {
-                return (
-                  <Menu.Item
-                    onClick={() => {
-                      history.push('/admin/settings/' + tab.path);
-                    }}
-                    key={tab.path}
-                  >
-                    {compile(tab.title)}
-                  </Menu.Item>
-                );
-              })}
-            </Menu.ItemGroup>
-            <Menu.Divider></Menu.Divider>
-            <Menu.Item
-              onClick={() => {
-                history.push('/admin/settings');
-              }}
-              key="/admin/settings"
-            >
-              {t('All plugin settings')}
-            </Menu.Item>
-          </Menu>
-        }
-      >
-        <PluginManager.Toolbar.Item
-          icon={<SettingOutlined />}
-          // title={t('All plugin settings')}
-        ></PluginManager.Toolbar.Item>
-      </Dropdown>
-    </ActionContext.Provider>
+    <Dropdown
+      menu={{
+        style: {
+          maxHeight: '70vh',
+          overflow: 'auto',
+        },
+        items: settingItems,
+      }}
+    >
+      <Button
+        data-testid="plugin-settings-button"
+        icon={<SettingOutlined style={{ color: token.colorTextHeaderMenu }} />}
+        // title={t('All plugin settings')}
+      />
+    </Dropdown>
   );
 };

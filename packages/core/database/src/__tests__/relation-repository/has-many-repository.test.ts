@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { mockDatabase } from '../index';
 import { HasManyRepository } from '../../relation-repository/hasmany-repository';
 import { BelongsToManyRepository } from '../../relation-repository/belongs-to-many-repository';
@@ -11,6 +20,7 @@ describe('has many with target key', function () {
 
   beforeEach(async () => {
     db = mockDatabase();
+    await db.clean({ drop: true });
   });
 
   test('target key with filterTargetKey', async () => {
@@ -133,11 +143,13 @@ describe('has many repository', () => {
 
   beforeEach(async () => {
     db = mockDatabase();
+    await db.clean({ drop: true });
     User = db.collection({
       name: 'users',
       fields: [
         { type: 'string', name: 'name' },
         { type: 'hasMany', name: 'posts' },
+        { type: 'string', name: 'status' },
       ],
     });
 
@@ -249,6 +261,118 @@ describe('has many repository', () => {
     expect(p1.title).toEqual('u1t1');
   });
 
+  test('firstOrCreate', async () => {
+    const u1 = await User.repository.create({
+      values: { name: 'u1' },
+    });
+
+    const UserPostRepository = new HasManyRepository(User, 'posts', u1.id);
+
+    // 测试基本创建
+    const post1 = await UserPostRepository.firstOrCreate({
+      filterKeys: ['title'],
+      values: {
+        title: 't1',
+      },
+    });
+
+    expect(post1.title).toEqual('t1');
+    expect(post1.userId).toEqual(u1.id);
+
+    // 测试查找已存在记录
+    const post2 = await UserPostRepository.firstOrCreate({
+      filterKeys: ['title'],
+      values: {
+        title: 't1',
+      },
+    });
+
+    expect(post2.id).toEqual(post1.id);
+
+    // 测试带关联数据的创建
+    const post3 = await UserPostRepository.firstOrCreate({
+      filterKeys: ['title'],
+      values: {
+        title: 't2',
+        comments: [{ content: 'comment1' }],
+      },
+    });
+
+    expect(post3.title).toEqual('t2');
+    expect(await post3.countComments()).toEqual(1);
+
+    // 测试多个 filterKeys
+    const post4 = await UserPostRepository.firstOrCreate({
+      filterKeys: ['title', 'status'],
+      values: {
+        title: 't2',
+        status: 'draft',
+      },
+    });
+
+    expect(post4.id).not.toEqual(post3.id);
+  });
+
+  test('updateOrCreate', async () => {
+    const u1 = await User.repository.create({
+      values: { name: 'u1' },
+    });
+
+    const UserPostRepository = new HasManyRepository(User, 'posts', u1.id);
+
+    // 测试基本创建
+    const post1 = await UserPostRepository.updateOrCreate({
+      filterKeys: ['title'],
+      values: {
+        title: 't1',
+        status: 'draft',
+      },
+    });
+
+    expect(post1.title).toEqual('t1');
+    expect(post1.status).toEqual('draft');
+    expect(post1.userId).toEqual(u1.id);
+
+    // 测试更新已存在记录
+    const post2 = await UserPostRepository.updateOrCreate({
+      filterKeys: ['title'],
+      values: {
+        title: 't1',
+        status: 'published',
+      },
+    });
+
+    expect(post2.id).toEqual(post1.id);
+    expect(post2.status).toEqual('published');
+
+    // 测试带关联数据的更新
+    const post3 = await UserPostRepository.updateOrCreate({
+      filterKeys: ['title'],
+      values: {
+        title: 't1',
+        status: 'archived',
+        comments: [{ content: 'new comment' }],
+      },
+    });
+
+    expect(post3.id).toEqual(post1.id);
+    expect(post3.status).toEqual('archived');
+    expect(await post3.countComments()).toEqual(1);
+
+    // 测试多个 filterKeys 的创建
+    const post4 = await UserPostRepository.updateOrCreate({
+      filterKeys: ['title', 'status'],
+      values: {
+        title: 't1',
+        status: 'draft',
+        comments: [{ content: 'another comment' }],
+      },
+    });
+
+    expect(post4.id).not.toEqual(post1.id);
+    expect(await post4.countComments()).toEqual(1);
+  });
+
   test('find with has many', async () => {
     const u1 = await User.repository.create({ values: { name: 'u1' } });
 
@@ -286,14 +410,12 @@ describe('has many repository', () => {
     const PostTagRepository = new BelongsToManyRepository(Post, 'tags', p1.id);
     await PostTagRepository.set([t1.id, t2.id, t3.id]);
 
-    const posts = await UserPostRepository.find({
+    const post = await UserPostRepository.findOne({
       filter: {
         'tags.name': 't1',
       },
       appends: ['tags'],
     });
-
-    const post = posts[0];
 
     expect(post.tags.length).toEqual(3);
 

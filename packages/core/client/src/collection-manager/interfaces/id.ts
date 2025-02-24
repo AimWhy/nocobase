@@ -1,14 +1,24 @@
-import { operators } from './properties';
-import { IField } from './types';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
 
-export const id: IField = {
-  name: 'id',
-  type: 'object',
-  group: 'systemInfo',
-  order: 0,
-  title: '{{t("ID")}}',
-  sortable: true,
-  default: {
+import { CollectionFieldInterface } from '../../data-source/collection-field-interface/CollectionFieldInterface';
+import { operators } from './properties';
+
+export class IdFieldInterface extends CollectionFieldInterface {
+  name = 'id';
+  type = 'object';
+  group = 'systemInfo';
+  order = 0;
+  title = '{{t("ID")}}';
+  hidden = true;
+  sortable = true;
+  default = {
     name: 'id',
     type: 'bigInt',
     autoIncrement: true,
@@ -20,8 +30,9 @@ export const id: IField = {
       'x-component': 'InputNumber',
       'x-read-pretty': true,
     },
-  },
-  properties: {
+  };
+  availableTypes = ['bigInt', 'integer'];
+  properties = {
     'uiSchema.title': {
       type: 'string',
       title: '{{t("Field display name")}}',
@@ -40,8 +51,9 @@ export const id: IField = {
       description:
         "{{t('Randomly generated and can be modified. Support letters, numbers and underscores, must start with an letter.')}}",
     },
-  },
-  filterable: {
+  };
+  filterable = {
     operators: operators.id,
-  },
-};
+  };
+  titleUsable = true;
+}

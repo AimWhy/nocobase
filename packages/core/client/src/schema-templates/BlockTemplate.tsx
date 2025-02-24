@@ -1,26 +1,40 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { observer, useField, useFieldSchema } from '@formily/react';
-import React, { createContext, useContext, useMemo } from 'react';
-import { useTranslation } from 'react-i18next';
-import { RemoteSchemaComponent, useDesignable } from '..';
+import React, { useMemo } from 'react';
+import { BlockTemplateProvider, CollectionDeletedPlaceholder, RemoteSchemaComponent, useDesignable } from '..';
+import { useTemplateBlockContext } from '../block-provider/TemplateBlockProvider';
 import { useSchemaTemplateManager } from './SchemaTemplateManagerProvider';
 
-const BlockTemplateContext = createContext<any>({});
+export const BlockTemplate = observer(
+  (props: any) => {
+    const { templateId } = props;
+    const { getTemplateById } = useSchemaTemplateManager();
+    const field = useField();
+    const fieldSchema = useFieldSchema();
+    const { dn } = useDesignable();
+    const template = useMemo(() => getTemplateById(templateId), [templateId]);
+    const { onTemplateSuccess } = useTemplateBlockContext();
 
-export const useBlockTemplateContext = () => {
-  return useContext(BlockTemplateContext);
-};
-
-export const BlockTemplate = observer((props: any) => {
-  const { templateId } = props;
-  const { getTemplateById } = useSchemaTemplateManager();
-  const field = useField();
-  const fieldSchema = useFieldSchema();
-  const { dn } = useDesignable();
-  const { t } = useTranslation();
-  const template = useMemo(() => getTemplateById(templateId), [templateId]);
-  return template ? (
-    <BlockTemplateContext.Provider value={{ dn, field, fieldSchema, template }}>
-      <RemoteSchemaComponent noForm uid={template?.uid} />
-    </BlockTemplateContext.Provider>
-  ) : null;
-});
+    const onSuccess = (data) => {
+      fieldSchema['x-linkage-rules'] = data?.data?.['x-linkage-rules'] || [];
+      fieldSchema.setProperties(data?.data?.properties);
+      onTemplateSuccess?.();
+    };
+    return template ? (
+      <BlockTemplateProvider {...{ dn, field, fieldSchema, template }}>
+        <RemoteSchemaComponent noForm uid={template?.uid} onSuccess={onSuccess} />
+      </BlockTemplateProvider>
+    ) : (
+      <CollectionDeletedPlaceholder type="Block template" name={templateId} />
+    );
+  },
+  { displayName: 'BlockTemplate' },
+);

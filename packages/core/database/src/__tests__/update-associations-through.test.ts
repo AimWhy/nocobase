@@ -1,3 +1,13 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import { vi } from 'vitest';
 import { Database } from '../database';
 import { mockDatabase } from './';
 
@@ -45,8 +55,8 @@ describe('update through', () => {
       fields: [],
     });
     await db.sync();
-    const callback1 = jest.fn();
-    const callback2 = jest.fn();
+    const callback1 = vi.fn();
+    const callback2 = vi.fn();
     db.on('c.afterCreate', callback1);
     db.on('c.afterBulkCreate', callback2);
     const b = await db.getRepository('b').create({

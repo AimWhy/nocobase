@@ -1,10 +1,5 @@
----
-nav:
-  path: /client
-group:
-  path: /schema-components
----
-
 # G2Plot
 
-<code src="./demos/demo1.tsx"/>
+G2 图表。
+
+<code src="./demos/demo1.tsx"></code>

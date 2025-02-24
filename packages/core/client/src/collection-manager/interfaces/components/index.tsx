@@ -1,34 +1,36 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { Switch } from 'antd';
 import React from 'react';
 
 export const TargetKey = () => {
-  return (
-    <div>
-      Target key
-    </div>
-  );
+  return <div>Target key</div>;
 };
 
 export const ThroughCollection = () => {
   return (
     <div>
-      Through collection <Switch size={'small'} defaultChecked checkedChildren="Auto fill" unCheckedChildren="Customize"/>
+      Through collection{' '}
+      <Switch size={'small'} defaultChecked checkedChildren="Auto fill" unCheckedChildren="Customize" />
     </div>
   );
 };
 
 export const SourceKey = () => {
-  return (
-    <div>
-      Source key
-    </div>
-  );
+  return <div>Source key</div>;
 };
 
 export const ForeignKey = () => {
   return (
     <div>
-      Foreign key <Switch size={'small'} defaultChecked checkedChildren="Auto fill" unCheckedChildren="Customize"/>
+      Foreign key <Switch size={'small'} defaultChecked checkedChildren="Auto fill" unCheckedChildren="Customize" />
     </div>
   );
 };

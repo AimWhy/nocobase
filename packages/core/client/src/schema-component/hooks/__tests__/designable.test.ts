@@ -1,3 +1,13 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import { vi } from 'vitest';
 import { Schema } from '@formily/react';
 import { createDesignable, Designable } from '../useDesignable';
 
@@ -482,7 +492,7 @@ describe('parentsIn', () => {
     const dn = createDesignable({
       current: schema.properties.menu.properties.item1,
     });
-    const callback = jest.fn();
+    const callback = vi.fn();
     dn.on('error', callback);
     dn.insertAfterBegin(schema.properties.menu);
     expect(schema.properties.menu).toBeDefined();

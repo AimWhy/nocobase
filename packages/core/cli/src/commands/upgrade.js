@@ -1,7 +1,17 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 const chalk = require('chalk');
 const { Command } = require('commander');
 const { resolve } = require('path');
-const { getVersion, run, promptForTs, runAppCommand, hasCorePackages, updateJsonFile, hasTsNode } = require('../util');
+const { run, promptForTs, runAppCommand, hasCorePackages, downloadPro, hasTsNode } = require('../util');
+const { existsSync, rmSync } = require('fs');
 
 /**
  *
@@ -13,37 +23,55 @@ module.exports = (cli) => {
     .command('upgrade')
     .allowUnknownOption()
     .option('--raw')
+    .option('--next')
     .option('-S|--skip-code-update')
     .action(async (options) => {
       if (hasTsNode()) promptForTs();
       if (hasCorePackages()) {
         // await run('yarn', ['install']);
+        await downloadPro();
         await runAppCommand('upgrade');
         return;
       }
       if (options.skipCodeUpdate) {
+        await downloadPro();
         await runAppCommand('upgrade');
         return;
       }
-      await runAppCommand('upgrade');
-      // If ts-node is not installed, do not do the following
+      // await runAppCommand('upgrade');
       if (!hasTsNode()) {
+        await downloadPro();
+        await runAppCommand('upgrade');
         return;
       }
-      const version = await getVersion();
-      await run('yarn', ['add', '@nocobase/cli', '@nocobase/devtools', '-W']);
-      const clientPackage = resolve(process.cwd(), `packages/${APP_PACKAGE_ROOT}/client/package.json`);
-      const serverPackage = resolve(process.cwd(), `packages/${APP_PACKAGE_ROOT}/server/package.json`);
-      await updateJsonFile(clientPackage, (data) => {
-        data.devDependencies['@nocobase/client'] = version;
-        return data;
+      const rmAppDir = () => {
+        // If ts-node is not installed, do not do the following
+        const appDevDir = resolve(process.cwd(), './storage/.app-dev');
+        if (existsSync(appDevDir)) {
+          rmSync(appDevDir, { recursive: true, force: true });
+        }
+      };
+      const pkg = require('../../package.json');
+      let distTag = 'latest';
+      if (pkg.version.includes('alpha')) {
+        distTag = 'alpha';
+      } else if (pkg.version.includes('beta')) {
+        distTag = 'beta';
+      }
+      // get latest version
+      const { stdout } = await run('npm', ['info', `@nocobase/cli@${distTag}`, 'version'], {
+        stdio: 'pipe',
       });
-      await updateJsonFile(serverPackage, (data) => {
-        data.dependencies['@nocobase/preset-nocobase'] = version;
-        return data;
-      });
+      if (pkg.version === stdout) {
+        await downloadPro();
+        await runAppCommand('upgrade');
+        await rmAppDir();
+        return;
+      }
+      await run('yarn', ['add', `@nocobase/cli@${distTag}`, `@nocobase/devtools@${distTag}`, '-W']);
       await run('yarn', ['install']);
-      await run('nocobase', ['build']);
+      await downloadPro();
       await runAppCommand('upgrade');
+      await rmAppDir();
     });
 };

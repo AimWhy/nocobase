@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { omit } from 'lodash';
 import {
   AssociationScope,
@@ -8,7 +17,7 @@ import {
   Utils,
 } from 'sequelize';
 import { Collection } from '../collection';
-import { Reference } from '../features/ReferencesMap';
+import { buildReference, Reference } from '../features/references-map';
 import { checkIdentifier } from '../utils';
 import { MultipleRelationFieldOptions, RelationField } from './relation-field';
 
@@ -89,13 +98,41 @@ export class HasManyField extends RelationField {
   reference(association): Reference {
     const sourceKey = association.sourceKey;
 
-    return {
+    return buildReference({
       sourceCollectionName: this.database.modelCollection.get(association.target).name,
       sourceField: association.foreignKey,
       targetField: sourceKey,
       targetCollectionName: this.database.modelCollection.get(association.source).name,
       onDelete: this.options.onDelete,
-    };
+    });
+  }
+
+  checkAssociationKeys() {
+    let { foreignKey, sourceKey } = this.options;
+
+    if (!sourceKey) {
+      sourceKey = this.collection.model.primaryKeyAttribute;
+    }
+
+    if (!foreignKey) {
+      foreignKey = Utils.camelize([Utils.singularize(this.name), this.collection.model.primaryKeyAttribute].join('_'));
+    }
+
+    const foreignKeyAttribute = this.TargetModel.rawAttributes[foreignKey];
+    const sourceKeyAttribute = this.collection.model.rawAttributes[sourceKey];
+
+    if (!foreignKeyAttribute || !sourceKeyAttribute) {
+      return;
+    }
+
+    const foreignKeyType = foreignKeyAttribute.type.constructor.toString();
+    const sourceKeyType = sourceKeyAttribute.type.constructor.toString();
+
+    if (!this.keyPairsTypeMatched(foreignKeyType, sourceKeyType)) {
+      throw new Error(
+        `Foreign key "${foreignKey}" type "${foreignKeyType}" does not match source key "${sourceKey}" type "${sourceKeyType}" in has many relation "${this.name}" of collection "${this.collection.name}"`,
+      );
+    }
   }
 
   bind() {
@@ -105,6 +142,8 @@ export class HasManyField extends RelationField {
       database.addPendingField(this);
       return false;
     }
+
+    this.checkAssociationKeys();
 
     if (collection.model.associations[this.name]) {
       delete collection.model.associations[this.name];
@@ -125,6 +164,11 @@ export class HasManyField extends RelationField {
 
     if (!this.options.foreignKey) {
       this.options.foreignKey = association.foreignKey;
+    }
+
+    if (!this.options.sourceKey) {
+      // @ts-ignore
+      this.options.sourceKey = association.sourceKey;
     }
 
     try {
@@ -149,6 +193,20 @@ export class HasManyField extends RelationField {
     }
 
     this.database.referenceMap.addReference(this.reference(association));
+
+    // add sort field if association is sortable
+    if (this.options.sortable) {
+      const targetCollection = database.modelCollection.get(this.TargetModel);
+      const sortFieldName = `${this.options.foreignKey}Sort`;
+
+      targetCollection.setField(sortFieldName, {
+        type: 'sort',
+        hidden: true,
+        scopeKey: this.options.foreignKey,
+      });
+
+      this.options.sortBy = sortFieldName;
+    }
 
     return true;
   }
@@ -175,7 +233,7 @@ export class HasManyField extends RelationField {
 
     const association = collection.model.associations[this.name];
 
-    if (association) {
+    if (association && !this.options.inherit) {
       this.database.referenceMap.removeReference(this.reference(association));
     }
 

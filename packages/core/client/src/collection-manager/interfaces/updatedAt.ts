@@ -1,17 +1,25 @@
-import { dateTimeProps, defaultProps, operators } from './properties';
-import { IField } from './types';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
 
-export const updatedAt: IField = {
-  name: 'updatedAt',
-  type: 'object',
-  group: 'systemInfo',
-  order: 2,
-  title: '{{t("Last updated at")}}',
-  sortable: true,
-  default: {
+import { CollectionFieldInterface } from '../../data-source/collection-field-interface/CollectionFieldInterface';
+import { dateTimeProps, defaultProps, operators } from './properties';
+
+export class UpdatedAtFieldInterface extends CollectionFieldInterface {
+  name = 'updatedAt';
+  type = 'object';
+  group = 'systemInfo';
+  order = 2;
+  title = '{{t("Last updated at")}}';
+  sortable = true;
+  default = {
     type: 'date',
     field: 'updatedAt',
-    // name,
     uiSchema: {
       type: 'string',
       title: '{{t("Last updated at")}}',
@@ -19,12 +27,14 @@ export const updatedAt: IField = {
       'x-component-props': {},
       'x-read-pretty': true,
     },
-  },
-  properties: {
+  };
+  availableTypes = [];
+  properties = {
     ...defaultProps,
     ...dateTimeProps,
-  },
-  filterable: {
+  };
+  filterable = {
     operators: operators.datetime,
-  },
-};
+  };
+  titleUsable = true;
+}

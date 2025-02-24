@@ -1,4 +1,13 @@
-import { Database, Model } from '..';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import { Database } from '..';
 import { filterMatch } from '../filter-match';
 import { mockDatabase } from './index';
 
@@ -7,6 +16,7 @@ describe('filterMatch', () => {
 
   beforeEach(async () => {
     db = mockDatabase();
+    await db.clean({ drop: true });
   });
 
   afterEach(async () => {
@@ -31,6 +41,8 @@ describe('filterMatch', () => {
       }),
     ).toBeTruthy();
 
+    expect(filterMatch(post, { 'title.$not': 't1' })).toBeFalsy();
+
     expect(
       filterMatch(post, {
         $or: [{ title: 't1' }, { title: 't2' }],
@@ -48,5 +60,39 @@ describe('filterMatch', () => {
         title: 't2',
       }),
     ).toBeFalsy();
+  });
+
+  test('filter by array operation', () => {
+    expect(
+      expect(
+        filterMatch(
+          {
+            tags: ['tag1', 'tag2'],
+          },
+          {
+            tags: {
+              $match: 'tag1',
+            },
+          },
+        ),
+      ).toBeTruthy(),
+    );
+  });
+
+  test('filter by date operation', () => {
+    expect(
+      expect(
+        filterMatch(
+          {
+            createdAt: '2013-02-08T09:30:26.123Z',
+          },
+          {
+            createdAt: {
+              $dateOn: '2013-02-08',
+            },
+          },
+        ),
+      ).toBeTruthy(),
+    );
   });
 });

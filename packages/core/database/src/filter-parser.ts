@@ -1,9 +1,19 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { flatten, unflatten } from 'flat';
 import { default as lodash, default as _ } from 'lodash';
 import { ModelStatic } from 'sequelize';
 import { Collection } from './collection';
 import { Database } from './database';
 import { Model } from './model';
+import { BelongsToArrayAssociation } from './belongs-to-array/belongs-to-array-repository';
 
 const debug = require('debug')('noco-database');
 
@@ -56,7 +66,7 @@ export default class FilterParser {
     return filter;
   }
 
-  toSequelizeParams() {
+  toSequelizeParams(): any {
     debug('filter %o', this.filter);
 
     if (!this.filter) {
@@ -84,7 +94,9 @@ export default class FilterParser {
 
     debug('associations %O', associations);
 
-    for (let [key, value] of Object.entries(flattenedFilter)) {
+    for (const entry of Object.entries(flattenedFilter)) {
+      const key = entry[0];
+      let value = entry[1];
       // 处理 filter 条件
       if (skipPrefix && key.startsWith(skipPrefix)) {
         continue;
@@ -96,7 +108,7 @@ export default class FilterParser {
       }
 
       debug('handle filter key "%s: "%s"', key, value);
-      let keys = key.split('.');
+      const keys = key.split('.');
 
       // paths ?
       const paths = [];
@@ -135,6 +147,7 @@ export default class FilterParser {
                 path: skipPrefix,
                 fullName,
                 fieldName,
+                fieldPath: `${this.collection.name}.${fullName}`,
                 model: this.model,
               });
               break;
@@ -157,17 +170,29 @@ export default class FilterParser {
           continue;
         }
 
+        const association = associations[firstKey];
         const associationKeys = [];
 
         associationKeys.push(firstKey);
 
         debug('associationKeys %o', associationKeys);
 
-        // set sequelize include option
-        _.set(include, firstKey, {
-          association: firstKey,
-          attributes: [], // out put empty fields by default
-        });
+        const existInclude = _.get(include, firstKey);
+
+        if (!existInclude) {
+          // set sequelize include option
+          let includeOptions = {
+            association: firstKey,
+            attributes: [], // out put empty fields by default
+          };
+          if (association.associationType === 'BelongsToArray') {
+            includeOptions = {
+              ...includeOptions,
+              ...(association as any as BelongsToArrayAssociation).generateInclude(),
+            };
+          }
+          _.set(include, firstKey, includeOptions);
+        }
 
         // association target model
         let target = associations[firstKey].target;
@@ -178,7 +203,7 @@ export default class FilterParser {
           origins.push(attr);
           // if it is target model attribute
           if (target.rawAttributes[attr]) {
-            associationKeys.push(attr);
+            associationKeys.push(target.rawAttributes[attr].field || attr);
             target = null;
           } else if (target.associations[attr]) {
             // if it is target model association (nested association filter)
@@ -191,10 +216,14 @@ export default class FilterParser {
               assoc.push(associationKey);
             });
 
-            _.set(include, assoc, {
-              association: attr,
-              attributes: [],
-            });
+            const existInclude = _.get(include, assoc);
+            if (!existInclude) {
+              _.set(include, assoc, {
+                association: attr,
+                attributes: [],
+              });
+            }
+
             target = target.associations[attr].target;
           } else {
             throw new Error(`${attr} neither ${firstKey}'s association nor ${firstKey}'s attribute`);
@@ -217,6 +246,7 @@ export default class FilterParser {
       if (values && typeof values === 'object' && value && typeof value === 'object') {
         value = { ...value, ...values };
       }
+
       _.set(where, paths, value);
     }
 
@@ -229,13 +259,27 @@ export default class FilterParser {
       });
     };
     debug('where %o, include %o', where, include);
-    return { where, include: toInclude(include) };
+    const results = { where, include: toInclude(include) };
+
+    //traverse filter include, set fromFiler to true
+    const traverseInclude = (include) => {
+      for (const item of include) {
+        if (item.include) {
+          traverseInclude(item.include);
+        }
+        item.fromFilter = true;
+      }
+    };
+
+    traverseInclude(results.include);
+
+    return results;
   }
 
   private getFieldNameFromQueryPath(queryPath: string) {
     const paths = queryPath.split('.');
     let fieldName;
-    let fullPaths = [];
+    const fullPaths = [];
     for (const path of paths) {
       if (path.startsWith('$') || !lodash.isNaN(parseInt(path))) {
         continue;

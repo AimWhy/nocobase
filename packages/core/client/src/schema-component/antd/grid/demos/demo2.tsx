@@ -1,23 +1,33 @@
+
+
 import { ISchema } from '@formily/react';
 import { uid } from '@formily/shared';
 import {
+  APIClientProvider,
+  CurrentUserProvider,
   Form,
   FormItem,
   Grid,
   Input,
-  Markdown,
+  Application,
+  Plugin,
   SchemaComponent,
   SchemaComponentProvider,
-  SchemaInitializerProvider
 } from '@nocobase/client';
 import React from 'react';
+
+import { mockAPIClient } from '../../../../testUtils';
+
+const { apiClient, mockRequest } = mockAPIClient();
+mockRequest.onGet('/auth:check').reply(() => {
+  return [200, { data: {} }];
+});
 
 const schema: ISchema = {
   type: 'void',
   name: 'grid1',
   'x-decorator': 'Form',
   'x-component': 'Grid',
-  'x-item-initializer': 'AddFormItem',
   'x-uid': uid(),
   properties: {
     row1: {
@@ -62,12 +72,33 @@ const schema: ISchema = {
   },
 };
 
-export default function App() {
+const Root = () => {
   return (
-    <SchemaComponentProvider components={{ Markdown, Form, Grid, Input, FormItem }}>
-      <SchemaInitializerProvider>
-        <SchemaComponent schema={schema} />
-      </SchemaInitializerProvider>
-    </SchemaComponentProvider>
+    <APIClientProvider apiClient={apiClient}>
+      <CurrentUserProvider>
+        <SchemaComponentProvider components={{ Form, Grid, Input, FormItem }}>
+          <SchemaComponent schema={schema} />
+        </SchemaComponentProvider>
+      </CurrentUserProvider>
+    </APIClientProvider>
   );
+};
+
+class MyPlugin extends Plugin {
+  async load() {
+    this.app.router.add('root', {
+      path: '/',
+      Component: Root,
+    });
+  }
 }
+
+const app = new Application({
+  router: {
+    type: 'memory',
+    initialEntries: ['/'],
+  },
+  plugins: [MyPlugin],
+});
+
+export default app.getRootComponent();

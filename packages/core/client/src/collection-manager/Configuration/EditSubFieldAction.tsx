@@ -1,4 +1,13 @@
-import { ArrayTable } from '@formily/antd';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import { ArrayTable } from '@formily/antd-v5';
 import { ISchema, useForm } from '@formily/react';
 import { uid } from '@formily/shared';
 import cloneDeep from 'lodash/cloneDeep';
@@ -6,9 +15,9 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAPIClient, useRequest } from '../../api-client';
 import { useRecord } from '../../record-provider';
-import { ActionContext, SchemaComponent } from '../../schema-component';
+import { ActionContextProvider, SchemaComponent } from '../../schema-component';
 import { useUpdateAction } from '../action-hooks';
-import { useCollectionManager } from '../hooks';
+import { useCollectionManager_deprecated } from '../hooks';
 import { IField } from '../interfaces/types';
 import * as components from './components';
 
@@ -70,7 +79,7 @@ const getSchema = (schema: IField): ISchema => {
 const useUpdateCollectionField = () => {
   const form = useForm();
   const { run } = useUpdateAction();
-  const { refreshCM } = useCollectionManager();
+  const { refreshCM } = useCollectionManager_deprecated();
   return {
     async run() {
       await form.submit();
@@ -92,13 +101,13 @@ const useUpdateCollectionField = () => {
 
 export const EditSubFieldAction = (props) => {
   const record = useRecord();
-  const { getInterface } = useCollectionManager();
+  const { getInterface } = useCollectionManager_deprecated();
   const [visible, setVisible] = useState(false);
   const [schema, setSchema] = useState({});
   const api = useAPIClient();
   const { t } = useTranslation();
   return (
-    <ActionContext.Provider value={{ visible, setVisible }}>
+    <ActionContextProvider value={{ visible, setVisible }}>
       <a
         onClick={async () => {
           // const { data } = await api.resource('collections.fields', record.collectionName).get({
@@ -115,7 +124,11 @@ export const EditSubFieldAction = (props) => {
       >
         {t('Edit')}
       </a>
-      <SchemaComponent schema={schema} components={{ ...components, ArrayTable }} scope={{ useUpdateCollectionField }} />
-    </ActionContext.Provider>
+      <SchemaComponent
+        schema={schema}
+        components={{ ...components, ArrayTable }}
+        scope={{ useUpdateCollectionField }}
+      />
+    </ActionContextProvider>
   );
 };

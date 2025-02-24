@@ -1,61 +1,67 @@
-import { css } from '@emotion/css';
-import React from 'react';
-import { useTranslation } from 'react-i18next';
-import { useCollection } from '../../../collection-manager';
-import { SchemaInitializer, SchemaInitializerItemOptions } from '../../../schema-initializer';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
 
-export const AssociationFilterInitializer = () => {
-  const { t } = useTranslation();
-  const { fields } = useCollection();
+import { SchemaInitializer } from '../../../application/schema-initializer/SchemaInitializer';
+import { SchemaInitializerItemType } from '../../../application/schema-initializer/types';
+import { useAssociatedFields } from '../../../filter-provider/utils';
 
-  const associatedFields = fields.filter((field) =>
-    ['o2o', 'oho', 'obo', 'm2o', 'createdBy', 'updatedBy', 'o2m', 'm2m', 'linkTo'].includes(field.interface),
-  );
+/**
+ * @deprecated
+ */
+export const associationFilterInitializer = new SchemaInitializer({
+  name: 'AssociationFilter.Initializer',
+  style: {
+    marginTop: 16,
+  },
+  icon: 'SettingOutlined',
+  title: '{{t("Configure fields")}}',
+  items: [
+    {
+      name: 'associationFields',
+      type: 'itemGroup',
+      title: '{{t("Association fields")}}',
+      useChildren() {
+        const associatedFields = useAssociatedFields();
+        const children: SchemaInitializerItemType[] = associatedFields.map((field) => ({
+          type: 'item',
+          name: field.key,
+          title: field.uiSchema?.title,
+          Component: 'AssociationFilterDesignerDisplayField',
+          schema: {
+            name: field.name,
+            title: field.uiSchema?.title,
+            type: 'void',
+            // 'x-designer': 'AssociationFilter.Item.Designer',
+            'x-toolbar': 'CollapseItemSchemaToolbar',
+            'x-settings': 'fieldSettings:FilterCollapseItem',
+            'x-component': 'AssociationFilter.Item',
+            'x-use-component-props': 'useAssociationFilterProps',
+            'x-component-props': {
+              fieldNames: {
+                label: field.targetKey || 'id',
+              },
+            },
+            properties: {},
+          },
+        }));
 
-  const items: SchemaInitializerItemOptions[] = associatedFields.map((field) => ({
-    type: 'item',
-    key: field.key,
-    title: field.uiSchema.title,
-    component: 'AssociationFilterDesignerDisplayField',
-    schema: {
-      name: field.name,
-      title: field.uiSchema.title,
-      type: 'void',
-      'x-designer': 'AssociationFilter.Item.Designer',
-      'x-component': 'AssociationFilter.Item',
-      'x-component-props': {
-        fieldNames: {
-          label: field.targetKey || 'id',
-        },
+        return children;
       },
-      properties: {},
     },
-  }));
-
-  const associatedFieldGroup: SchemaInitializerItemOptions = {
-    type: 'itemGroup',
-    title: t('Association fields'),
-    children: items,
-  };
-
-  const dividerItem: SchemaInitializerItemOptions = {
-    type: 'divider',
-  };
-
-  const deleteItem: SchemaInitializerItemOptions = {
-    type: 'item',
-    title: t('Delete'),
-    component: 'AssociationFilterDesignerDelete',
-  };
-
-  return (
-    <SchemaInitializer.Button
-      className={css`
-        margin-top: 16px;
-      `}
-      icon={'SettingOutlined'}
-      title={t('Configure fields')}
-      items={[associatedFieldGroup, dividerItem, deleteItem]}
-    />
-  );
-};
+    {
+      name: 'divider',
+      type: 'divider',
+    },
+    {
+      name: 'delete',
+      title: '{{t("Delete")}}',
+      Component: 'AssociationFilterDesignerDelete',
+    },
+  ],
+});

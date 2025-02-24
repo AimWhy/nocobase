@@ -1,7 +1,15 @@
-import { ArrayField } from './array-field';
-import { BaseColumnFieldOptions } from './field';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
 
-export interface SetFieldOptions extends BaseColumnFieldOptions {
+import { ArrayField, ArrayFieldOptions } from './array-field';
+
+export interface SetFieldOptions extends Omit<ArrayFieldOptions, 'type'> {
   type: 'set';
 }
 

@@ -1,9 +1,19 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { Spin } from 'antd';
 import React, { createContext, useContext } from 'react';
-import { useRequest, useAPIClient } from '../../api-client';
-import { useRoute } from '../../route-switch';
+import { useRequest } from '../../api-client';
+import { useAdminSchemaUid } from '../../hooks';
 
 const MenuItemsContext = createContext(null);
+MenuItemsContext.displayName = 'MenuItemsContext';
 
 export const toItems = (properties = {}) => {
   const items = [];
@@ -28,11 +38,15 @@ export const useMenuItems = () => {
 };
 
 export const MenuItemsProvider = (props) => {
-  const route = useRoute();
+  const adminSchemaUid = useAdminSchemaUid();
   const options = {
-    url: `uiSchemas:getProperties/${route.uiSchemaUid}`,
+    url: `uiSchemas:getProperties/${adminSchemaUid}`,
   };
-  const service = useRequest(options);
+  const service = useRequest<{
+    data: {
+      properties: any;
+    };
+  }>(options);
   if (service.loading) {
     return <Spin />;
   }

@@ -1,11 +1,24 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import lodash from 'lodash';
 import { ACL } from './acl';
+
 type StrategyValue = false | '*' | string | string[];
 
 export interface AvailableStrategyOptions {
   displayName?: string;
   actions?: false | string | string[];
   allowConfigure?: boolean;
+  /**
+   * @internal
+   */
   resource?: '*';
 }
 
@@ -49,7 +62,7 @@ export class ACLAvailableStrategy {
       return true;
     }
 
-    if (this.actionsAsObject?.hasOwnProperty(actionName)) {
+    if (Object.prototype.hasOwnProperty.call(this.actionsAsObject || {}, actionName)) {
       const predicateName = this.actionsAsObject[actionName];
       if (predicateName) {
         return lodash.cloneDeep(predicate[predicateName]);

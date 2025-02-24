@@ -1,29 +1,45 @@
-import { defaultProps, operators, unique } from './properties';
-import { IField } from './types';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
 
-export const email: IField = {
-  name: 'email',
-  type: 'object',
-  group: 'basic',
-  order: 4,
-  title: '{{t("Email")}}',
-  sortable: true,
-  default: {
+import { ISchema } from '@formily/react';
+import { defaultProps, operators, unique } from './properties';
+import { CollectionFieldInterface } from '../../data-source/collection-field-interface/CollectionFieldInterface';
+
+export class EmailFieldInterface extends CollectionFieldInterface {
+  name = 'email';
+  type = 'object';
+  group = 'basic';
+  order = 4;
+  title = '{{t("Email")}}';
+  sortable = true;
+  default = {
     type: 'string',
-    // name,
     uiSchema: {
       type: 'string',
-      // title,
       'x-component': 'Input',
       'x-validator': 'email',
     },
-  },
-  hasDefaultValue: true,
-  properties: {
+  };
+  availableTypes = ['string'];
+  hasDefaultValue = true;
+  properties = {
     ...defaultProps,
     unique,
-  },
-  filterable: {
+  };
+  filterable = {
     operators: operators.string,
-  },
-};
+  };
+  titleUsable = true;
+  schemaInitialize(schema: ISchema, { block }) {
+    if (['Table', 'Kanban'].includes(block)) {
+      schema['x-component-props'] = schema['x-component-props'] || {};
+      schema['x-component-props']['ellipsis'] = true;
+    }
+  }
+}

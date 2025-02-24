@@ -1,6 +1,8 @@
-import React from 'react';
+
+
 import { ISchema } from '@formily/react';
-import { Page, DocumentTitleProvider, SchemaComponent, SchemaComponentProvider } from '@nocobase/client';
+import { DocumentTitleProvider, Page, SchemaComponent, SchemaComponentProvider, Application } from '@nocobase/client';
+import React from 'react';
 
 const schema: ISchema = {
   type: 'object',
@@ -20,7 +22,7 @@ const schema: ISchema = {
   },
 };
 
-export default () => {
+const Root = () => {
   return (
     <SchemaComponentProvider components={{ Page }}>
       <DocumentTitleProvider addonAfter={'NocoBase'}>
@@ -29,3 +31,9 @@ export default () => {
     </SchemaComponentProvider>
   );
 };
+
+const app = new Application({
+  providers: [Root],
+});
+
+export default app.getRootComponent();

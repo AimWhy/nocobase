@@ -1,9 +1,17 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import lodash from 'lodash';
-import { DataTypes, Model as SequelizeModel, ModelStatic } from 'sequelize';
+import { Model as SequelizeModel, ModelStatic } from 'sequelize';
 import { Collection } from './collection';
 import { Database } from './database';
 import { Field } from './fields';
-import type { InheritedCollection } from './inherited-collection';
 import { SyncRunner } from './sync-runner';
 
 const _ = lodash;
@@ -28,8 +36,34 @@ export class Model<TModelAttributes extends {} = any, TCreationAttributes extend
   public static collection: Collection;
 
   [key: string]: any;
+
   protected _changedWithAssociations = new Set();
   protected _previousDataValuesWithAssociations = {};
+
+  public get db(): Database {
+    // @ts-ignore
+    return this.constructor.database;
+  }
+
+  static async sync(options) {
+    const runner = new SyncRunner(this);
+    return await runner.runSync(options);
+  }
+
+  static callSetters(values, options) {
+    // map values
+    const result = {};
+    for (const key of Object.keys(values)) {
+      const field = this.collection.getField(key);
+      if (field && field.setter) {
+        result[key] = field.setter.call(field, values[key], options, values, key);
+      } else {
+        result[key] = values[key];
+      }
+    }
+
+    return result;
+  }
 
   // TODO
   public toChangedWithAssociations() {
@@ -72,6 +106,7 @@ export class Model<TModelAttributes extends {} = any, TCreationAttributes extend
           return data;
         },
         this.hiddenObjKey,
+        this.handleBigInt,
       ];
       return handles.reduce((carry, fn) => fn.apply(this, [carry, options]), obj);
     };
@@ -107,6 +142,13 @@ export class Model<TModelAttributes extends {} = any, TCreationAttributes extend
 
           if (['HasMany', 'BelongsToMany'].includes(association.associationType)) {
             result[key] = handleArray(data[key], opts).map((item) => traverseJSON(item, opts));
+          } else if (association.associationType === 'BelongsToArray') {
+            const value = data[key];
+            if (!value || value.some((v) => typeof v !== 'object')) {
+              result[key] = value;
+            } else {
+              result[key] = handleArray(data[key], opts).map((item) => traverseJSON(item, opts));
+            }
           } else {
             result[key] = data[key] ? traverseJSON(data[key], opts) : null;
           }
@@ -129,6 +171,24 @@ export class Model<TModelAttributes extends {} = any, TCreationAttributes extend
     return lodash.omit(obj, hiddenFields);
   }
 
+  private handleBigInt(obj, options) {
+    if (!options.db.inDialect('mariadb')) {
+      return obj;
+    }
+
+    const bigIntKeys = Object.keys(options.model.rawAttributes).filter((key) => {
+      return options.model.rawAttributes[key].type.constructor.name === 'BIGINT';
+    });
+
+    for (const key of bigIntKeys) {
+      if (obj[key] !== null && obj[key] !== undefined && typeof obj[key] !== 'string' && typeof obj[key] !== 'number') {
+        obj[key] = obj[key].toString();
+      }
+    }
+
+    return obj;
+  }
+
   private sortAssociations(data, { field }: JSONTransformerOptions): any {
     const sortBy = field.options.sortBy;
     return sortBy ? this.sortArray(data, sortBy) : data;
@@ -148,42 +208,5 @@ export class Model<TModelAttributes extends {} = any, TCreationAttributes extend
     });
 
     return lodash.orderBy(data, orderItems, orderDirections);
-  }
-
-  static async sync(options) {
-    const model = this as any;
-
-    // fix sequelize sync with model that not have any column
-    if (Object.keys(model.tableAttributes).length === 0) {
-      if (this.database.inDialect('sqlite', 'mysql')) {
-        console.error(`Zero-column tables aren't supported in ${this.database.sequelize.getDialect()}`);
-        return;
-      }
-
-      // @ts-ignore
-      const queryInterface = this.sequelize.queryInterface;
-
-      if (!queryInterface.patched) {
-        const oldDescribeTable = queryInterface.describeTable;
-        queryInterface.describeTable = async function (...args) {
-          try {
-            return await oldDescribeTable.call(this, ...args);
-          } catch (err) {
-            if (err.message.includes('No description found for')) {
-              return [];
-            } else {
-              throw err;
-            }
-          }
-        };
-        queryInterface.patched = true;
-      }
-    }
-
-    if (this.collection.isInherited()) {
-      return SyncRunner.syncInheritModel(model, options);
-    }
-
-    return SequelizeModel.sync.call(this, options);
   }
 }

@@ -1,26 +1,48 @@
-import { ISchema, useFieldSchema } from '@formily/react';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import { ISchema, useField, useFieldSchema } from '@formily/react';
+import _ from 'lodash';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { useCollectionManager } from '../../../collection-manager';
-import { GeneralSchemaDesigner, SchemaSettings } from '../../../schema-settings';
+import { useFormBlockContext } from '../../../block-provider/FormBlockProvider';
+import { useCollectionManager_deprecated, useCollection_deprecated } from '../../../collection-manager';
+import {
+  GeneralSchemaDesigner,
+  SchemaSettingsDefaultSortingRules,
+  SchemaSettingsModalItem,
+  SchemaSettingsRemove,
+  SchemaSettingsSelectItem,
+  SchemaSettingsSwitchItem,
+} from '../../../schema-settings';
+import { SchemaSettingsDataScope } from '../../../schema-settings/SchemaSettingsDataScope';
 import { useCompile, useDesignable } from '../../hooks';
-import { AssociationFilter } from './AssociationFilter';
 
 export const AssociationFilterItemDesigner = (props) => {
   const fieldSchema = useFieldSchema();
-  const { t } = useTranslation();
-  const collectionField = AssociationFilter.useAssociationField();
+  const { form } = useFormBlockContext();
 
-  const { getCollectionFields } = useCollectionManager();
+  const field = useField();
+  const { t } = useTranslation();
+  const { getCollectionJoinField } = useCollectionManager_deprecated();
+  const { getField } = useCollection_deprecated();
+
+  const collectionField = getField(fieldSchema['name']) || getCollectionJoinField(fieldSchema['x-collection-field']);
+
+  const { getCollectionFields } = useCollectionManager_deprecated();
   const compile = useCompile();
   const { dn } = useDesignable();
 
-  const targetFields = getCollectionFields(collectionField.target) ?? [];
+  const targetFields = collectionField?.target ? getCollectionFields(collectionField?.target) : [];
 
   const options = targetFields
-    .filter(
-      (field) => field?.interface && ['id', 'input', 'phone', 'email', 'integer', 'number'].includes(field?.interface),
-    )
+    .filter((field) => !field?.target && field.type !== 'boolean')
     .map((field) => ({
       value: field?.name,
       label: compile(field?.uiSchema?.title) || field?.name,
@@ -31,6 +53,8 @@ export const AssociationFilterItemDesigner = (props) => {
       ['x-uid']: fieldSchema['x-uid'],
     };
     const fieldNames = {
+      ...collectionField?.uiSchema?.['x-component-props']?.['fieldNames'],
+      ...fieldSchema['x-component-props']?.['fieldNames'],
       label,
     };
     fieldSchema['x-component-props'] = fieldSchema['x-component-props'] || {};
@@ -44,7 +68,7 @@ export const AssociationFilterItemDesigner = (props) => {
 
   return (
     <GeneralSchemaDesigner {...props} disableInitializer={true}>
-      <SchemaSettings.ModalItem
+      <SchemaSettingsModalItem
         title={t('Custom title')}
         schema={
           {
@@ -75,14 +99,48 @@ export const AssociationFilterItemDesigner = (props) => {
           dn.refresh();
         }}
       />
-      <SchemaSettings.SelectItem
+      <SchemaSettingsSwitchItem
+        title={t('Default collapse')}
+        checked={field.componentProps.defaultCollapse}
+        onChange={(v) => {
+          field.componentProps.defaultCollapse = v;
+          _.set(fieldSchema, 'x-component-props.defaultCollapse', v);
+          dn.emit('patch', {
+            schema: {
+              ['x-uid']: fieldSchema['x-uid'],
+              'x-component-props': fieldSchema['x-component-props'],
+            },
+          });
+          dn.refresh();
+        }}
+      />
+      <SchemaSettingsDataScope
+        collectionName={collectionField?.target}
+        defaultFilter={fieldSchema?.['x-component-props']?.params?.filter || {}}
+        form={form}
+        onSubmit={({ filter }) => {
+          _.set(field.componentProps, 'params', {
+            ...field.componentProps?.params,
+            filter,
+          });
+          fieldSchema['x-component-props']['params'] = field.componentProps.params;
+          dn.emit('patch', {
+            schema: {
+              ['x-uid']: fieldSchema['x-uid'],
+              'x-component-props': fieldSchema['x-component-props'],
+            },
+          });
+        }}
+      />
+      <SchemaSettingsDefaultSortingRules name={collectionField?.target} />
+      <SchemaSettingsSelectItem
         key="title-field"
         title={t('Title field')}
         options={options}
         value={fieldSchema['x-component-props']?.fieldNames?.label}
         onChange={onTitleFieldChange}
       />
-      <SchemaSettings.Remove
+      <SchemaSettingsRemove
         breakRemoveOn={{
           'x-component': 'Grid',
         }}

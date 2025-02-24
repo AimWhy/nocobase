@@ -1,7 +1,181 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { Collection } from '@nocobase/database';
 import Database from '../../database';
 import { BelongsToManyRepository } from '../../relation-repository/belongs-to-many-repository';
 import { mockDatabase } from '../index';
+import { pgOnly } from '@nocobase/test';
+
+pgOnly()('belongs to many with targetCollection', () => {
+  let db: Database;
+
+  let Org: Collection;
+  let User: Collection;
+  let Student: Collection;
+
+  let OrgUser: Collection;
+
+  beforeEach(async () => {
+    db = mockDatabase();
+
+    await db.clean({ drop: true });
+
+    OrgUser = db.collection({
+      name: 'org_user',
+    });
+
+    Org = db.collection({
+      name: 'orgs',
+      fields: [
+        { type: 'string', name: 'name' },
+        { type: 'belongsToMany', name: 'users', target: 'users', through: 'org_user' },
+      ],
+    });
+
+    User = db.collection({
+      name: 'users',
+      fields: [
+        { type: 'string', name: 'name' },
+        { type: 'belongsToMany', name: 'orgs', target: 'orgs', through: 'org_user' },
+      ],
+    });
+
+    Student = db.collection({
+      name: 'students',
+      inherits: ['users'],
+      fields: [{ type: 'integer', name: 'score' }],
+    });
+
+    await db.sync();
+  });
+
+  afterEach(async () => {
+    await db.close();
+  });
+
+  it('should update child collection', async () => {
+    const u1 = await User.repository.create({
+      values: {
+        name: 'user1',
+      },
+    });
+
+    const s1 = await Student.repository.create({
+      values: {
+        name: 'student1',
+        score: 100,
+      },
+    });
+
+    const org1 = await Org.repository.create({
+      values: {
+        name: 'org1',
+        users: [u1.get('id'), s1.get('id')],
+      },
+    });
+
+    const repository = Org.repository.relation<BelongsToManyRepository>('users').of(org1.get('id'));
+    await repository.update({
+      filterByTk: s1.get('id'),
+      targetCollection: Student.name,
+      values: {
+        score: 200,
+      },
+    });
+
+    const s1AfterUpdate = await Student.repository.findOne({});
+    expect(s1AfterUpdate.get('score')).toBe(200);
+  });
+});
+
+describe('belongs to many with collection that has no id key', () => {
+  let db: Database;
+  beforeEach(async () => {
+    db = mockDatabase();
+
+    await db.clean({ drop: true });
+  });
+
+  afterEach(async () => {
+    await db.close();
+  });
+
+  it('should set relation', async () => {
+    const A = db.collection({
+      name: 'a',
+      autoGenId: false,
+      fields: [
+        {
+          type: 'string',
+          name: 'name',
+          primaryKey: true,
+        },
+        {
+          type: 'belongsToMany',
+          name: 'bs',
+          target: 'b',
+          through: 'asbs',
+          sourceKey: 'name',
+          foreignKey: 'aName',
+          otherKey: 'bName',
+          targetKey: 'name',
+        },
+      ],
+    });
+
+    const B = db.collection({
+      name: 'b',
+      autoGenId: false,
+      fields: [
+        {
+          type: 'string',
+          name: 'key',
+          primaryKey: true,
+        },
+        {
+          type: 'string',
+          name: 'name',
+          unique: true,
+        },
+        {
+          type: 'belongsToMany',
+          name: 'as',
+          target: 'a',
+          through: 'asbs',
+          sourceKey: 'name',
+          foreignKey: 'bName',
+          otherKey: 'aName',
+          targetKey: 'name',
+        },
+      ],
+    });
+
+    await db.sync();
+    const a = await A.repository.create({
+      values: {
+        name: 'a1',
+      },
+    });
+    const b = await B.repository.create({
+      values: {
+        key: 'b1_key',
+        name: 'b1',
+      },
+    });
+
+    const a1bsRepository = await A.repository.relation<BelongsToManyRepository>('bs').of('a1');
+    expect(await a1bsRepository.find()).toHaveLength(0);
+    await a1bsRepository.toggle('b1');
+    expect(await a1bsRepository.find()).toHaveLength(1);
+  });
+});
 
 describe('belongs to many with target key', function () {
   let db: Database;
@@ -74,41 +248,66 @@ describe('belongs to many with target key', function () {
     expect(count).toEqual(0);
   });
 
-  test('destroy with target key and filter', async () => {
-    let t1 = await Tag.repository.create({
-      values: {
-        name: 't1',
-        status: 'published',
-      },
-    });
-
-    const t2 = await Tag.repository.create({
-      values: {
-        name: 't2',
-        status: 'draft',
-      },
-    });
-
+  test('firstOrCreate', async () => {
     const p1 = await Post.repository.create({
       values: { title: 'p1' },
     });
 
     const PostTagRepository = new BelongsToManyRepository(Post, 'tags', p1.get('title') as string);
 
-    await PostTagRepository.set([t1.get('name') as string, t2.get('name') as string]);
-
-    let [_, count] = await PostTagRepository.findAndCount();
-    expect(count).toEqual(2);
-
-    await PostTagRepository.destroy({
-      filterByTk: t1.get('name') as string,
-      filter: {
-        status: 'draft',
+    // 测试基本创建
+    const tag1 = await PostTagRepository.firstOrCreate({
+      filterKeys: ['name'],
+      values: {
+        name: 't1',
+        status: 'active',
       },
     });
 
-    [_, count] = await PostTagRepository.findAndCount();
-    expect(count).toEqual(2);
+    expect(tag1.name).toEqual('t1');
+    expect(tag1.status).toEqual('active');
+
+    // 测试查找已存在记录
+    const tag2 = await PostTagRepository.firstOrCreate({
+      filterKeys: ['name'],
+      values: {
+        name: 't1',
+        status: 'inactive',
+      },
+    });
+
+    expect(tag2.id).toEqual(tag1.id);
+    expect(tag2.status).toEqual('active');
+  });
+
+  test('updateOrCreate', async () => {
+    const p1 = await Post.repository.create({
+      values: { title: 'p1' },
+    });
+
+    const PostTagRepository = new BelongsToManyRepository(Post, 'tags', p1.get('title') as string);
+
+    const tag1 = await PostTagRepository.updateOrCreate({
+      filterKeys: ['name'],
+      values: {
+        name: 't1',
+        status: 'active',
+      },
+    });
+
+    expect(tag1.name).toEqual('t1');
+    expect(tag1.status).toEqual('active');
+
+    const tag2 = await PostTagRepository.updateOrCreate({
+      filterKeys: ['name'],
+      values: {
+        name: 't1',
+        status: 'inactive',
+      },
+    });
+
+    expect(tag2.id).toEqual(tag1.id);
+    expect(tag2.status).toEqual('inactive');
   });
 });
 
@@ -177,6 +376,49 @@ describe('belongs to many', () => {
 
   afterEach(async () => {
     await db.close();
+  });
+
+  it('should get database instance in repository', async () => {
+    const p1 = await Post.repository.create({
+      values: {
+        title: 'p1',
+      },
+    });
+
+    const postTagsRepository = new BelongsToManyRepository(Post, 'tags', p1.id);
+    expect(postTagsRepository.database).toBe(db);
+  });
+
+  it('should create associations with associations', async () => {
+    const p1 = await Post.repository.create({
+      values: {
+        title: 'p1',
+      },
+    });
+
+    const postTagsRepository = new BelongsToManyRepository(Post, 'tags', p1.id);
+
+    await postTagsRepository.create({
+      values: {
+        name: 't1',
+        colors: [
+          {
+            name: 'red',
+          },
+        ],
+      },
+    });
+
+    const t1 = await postTagsRepository.findOne({
+      filter: {
+        name: 't1',
+      },
+      appends: ['colors'],
+    });
+
+    expect(t1.name).toEqual('t1');
+    expect(t1.colors.length).toEqual(1);
+    expect(t1.colors[0].name).toEqual('red');
   });
 
   test('create with through values', async () => {
@@ -420,7 +662,7 @@ describe('belongs to many', () => {
     });
 
     const Post2TagRepository = new BelongsToManyRepository(Post, 'tags', p2.id);
-    const p2Tag = await Post2TagRepository.findOne();
+    let p2Tag = await Post2TagRepository.findOne();
     expect(p2Tag.posts_tags.tagged_at).toBeNull();
 
     // 设置p1与t1关联的tagged_at
@@ -435,11 +677,15 @@ describe('belongs to many', () => {
       },
     });
 
-    await t1.reload();
+    t1 = await PostTagRepository.findOne({
+      filter: {
+        name: 't1',
+      },
+    });
 
     expect(t1.posts_tags.tagged_at).toEqual('456');
 
-    await p2Tag.reload();
+    p2Tag = await Post2TagRepository.findOne();
     // p2-tag1 still not change
     expect(p2Tag.posts_tags.tagged_at).toBeNull();
   });
@@ -489,7 +735,7 @@ describe('belongs to many', () => {
   });
 
   test('add', async () => {
-    let t1 = await Tag.repository.create({
+    const t1 = await Tag.repository.create({
       values: { name: 't1' },
     });
 
@@ -500,7 +746,7 @@ describe('belongs to many', () => {
     const PostTagRepository = new BelongsToManyRepository(Post, 'tags', p1.id);
     await PostTagRepository.add([[t1.id, { tagged_at: '123' }]]);
 
-    let p1Tag = await PostTagRepository.findOne();
+    const p1Tag = await PostTagRepository.findOne();
     expect(p1Tag.posts_tags.tagged_at).toEqual('123');
   });
 
@@ -521,7 +767,7 @@ describe('belongs to many', () => {
 
     await PostTagRepository.set([t1.id]);
 
-    let p1Tags = await PostTagRepository.find();
+    const p1Tags = await PostTagRepository.find();
     expect(p1Tags.length).toEqual(1);
 
     await PostTagRepository.set([[t1.id, { tagged_at: '999' }]]);
@@ -536,7 +782,7 @@ describe('belongs to many', () => {
   });
 
   test('find by pk', async () => {
-    let t1 = await Tag.repository.create({
+    const t1 = await Tag.repository.create({
       values: {
         name: 't1',
       },
@@ -564,7 +810,7 @@ describe('belongs to many', () => {
   });
 
   test('toggle', async () => {
-    let t1 = await Tag.repository.create({
+    const t1 = await Tag.repository.create({
       values: { name: 't1' },
     });
 
@@ -582,7 +828,7 @@ describe('belongs to many', () => {
   });
 
   test('remove', async () => {
-    let t1 = await Tag.repository.create({
+    const t1 = await Tag.repository.create({
       values: { name: 't1' },
     });
 
@@ -600,7 +846,7 @@ describe('belongs to many', () => {
   });
 
   test('destroy all', async () => {
-    let t1 = await Tag.repository.create({
+    const t1 = await Tag.repository.create({
       values: {
         name: 't1',
       },
@@ -627,7 +873,7 @@ describe('belongs to many', () => {
   });
 
   test('destroy by id and filter', async () => {
-    let t1 = await Tag.repository.create({
+    const t1 = await Tag.repository.create({
       values: {
         name: 't1',
         status: 'published',
@@ -664,7 +910,7 @@ describe('belongs to many', () => {
   });
 
   test('destroy with id', async () => {
-    let t1 = await Tag.repository.create({
+    const t1 = await Tag.repository.create({
       values: {
         name: 't1',
       },
@@ -692,7 +938,7 @@ describe('belongs to many', () => {
   });
 
   test('transaction', async () => {
-    let t1 = await Tag.repository.create({
+    const t1 = await Tag.repository.create({
       values: {
         name: 't1',
       },

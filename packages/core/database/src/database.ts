@@ -1,10 +1,23 @@
-import { applyMixins, AsyncEmitter, requireModule } from '@nocobase/utils';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import { createConsoleLogger, createLogger, Logger, LoggerOptions } from '@nocobase/logger';
+import { applyMixins, AsyncEmitter } from '@nocobase/utils';
+import chalk from 'chalk';
 import merge from 'deepmerge';
 import { EventEmitter } from 'events';
+import { backOff } from 'exponential-backoff';
 import glob from 'glob';
 import lodash from 'lodash';
+import { nanoid } from 'nanoid';
 import { basename, isAbsolute, resolve } from 'path';
-import semver from 'semver';
+import safeJsonStringify from 'safe-json-stringify';
 import {
   DataTypes,
   ModelStatic,
@@ -15,24 +28,32 @@ import {
   Sequelize,
   SyncOptions,
   Transactionable,
-  Utils
+  Utils,
 } from 'sequelize';
 import { SequelizeStorage, Umzug } from 'umzug';
 import { Collection, CollectionOptions, RepositoryType } from './collection';
+import { CollectionFactory } from './collection-factory';
 import { ImporterReader, ImportFileExtension } from './collection-importer';
-import ReferencesMap from './features/ReferencesMap';
+import DatabaseUtils from './database-utils';
+import ReferencesMap from './features/references-map';
 import { referentialIntegrityCheck } from './features/referential-integrity-check';
 import { ArrayFieldRepository } from './field-repository/array-field-repository';
 import * as FieldTypes from './fields';
 import { Field, FieldContext, RelationField } from './fields';
+import { checkDatabaseVersion, registerDialects } from './helpers';
 import { InheritedCollection } from './inherited-collection';
 import InheritanceMap from './inherited-map';
+import { InterfaceManager } from './interface-manager';
+import { registerInterfaces } from './interfaces/utils';
+import { registerBuiltInListeners } from './listeners';
 import { MigrationItem, Migrations } from './migration';
 import { Model } from './model';
 import { ModelHook } from './model-hook';
 import extendOperators from './operators';
+import QueryInterface from './query-interface/query-interface';
+import buildQueryInterface from './query-interface/query-interface-builder';
 import { RelationRepository } from './relation-repository/relation-repository';
-import { Repository } from './repository';
+import { Repository, TargetKey } from './repository';
 import {
   AfterDefineCollectionListener,
   BeforeDefineCollectionListener,
@@ -58,10 +79,14 @@ import {
   SyncListener,
   UpdateListener,
   UpdateWithAssociationsListener,
-  ValidateListener
+  ValidateListener,
 } from './types';
+import { patchSequelizeQueryInterface, snakeCase } from './utils';
+import { BaseValueParser, registerFieldValueParsers } from './value-parsers';
+import { ViewCollection } from './view-collection';
+import { BaseDialect } from './dialects/base-dialect';
 
-export interface MergeOptions extends merge.Options {}
+export type MergeOptions = merge.Options;
 
 export interface PendingOptions {
   field: RelationField;
@@ -76,6 +101,10 @@ export interface IDatabaseOptions extends Options {
   tablePrefix?: string;
   migrator?: any;
   usingBigIntForId?: boolean;
+  underscored?: boolean;
+  logger?: LoggerOptions | Logger;
+  customHooks?: any;
+  instanceId?: string;
 }
 
 export type DatabaseOptions = IDatabaseOptions;
@@ -100,75 +129,58 @@ export type AddMigrationsOptions = {
 
 type OperatorFunc = (value: any, ctx?: RegisterOperatorsContext) => any;
 
-class DatabaseVersion {
-  db: Database;
-
-  constructor(db: Database) {
-    this.db = db;
-  }
-
-  async satisfies(versions) {
-    const dialects = {
-      sqlite: {
-        sql: 'select sqlite_version() as version',
-        get: (v) => v,
-      },
-      mysql: {
-        sql: 'select version() as version',
-        get: (v) => {
-          const m = /([\d+\.]+)/.exec(v);
-          return m[0];
-        },
-      },
-      postgres: {
-        sql: 'select version() as version',
-        get: (v) => {
-          const m = /([\d+\.]+)/.exec(v);
-          return semver.minVersion(m[0]).version;
-        },
-      },
-    };
-    for (const dialect of Object.keys(dialects)) {
-      if (this.db.inDialect(dialect)) {
-        if (!versions?.[dialect]) {
-          return false;
-        }
-        const [result] = (await this.db.sequelize.query(dialects[dialect].sql)) as any;
-        return semver.satisfies(dialects[dialect].get(result?.[0]?.version), versions[dialect]);
-      }
-    }
-    return false;
-  }
-}
-
 export class Database extends EventEmitter implements AsyncEmitter {
+  static dialects = new Map<string, typeof BaseDialect>();
+
   sequelize: Sequelize;
   migrator: Umzug;
   migrations: Migrations;
   fieldTypes = new Map();
+  fieldValueParsers = new Map();
   options: IDatabaseOptions;
   models = new Map<string, ModelStatic<Model>>();
   repositories = new Map<string, RepositoryType>();
   operators = new Map();
   collections = new Map<string, Collection>();
+  collectionsSort = new Map<string, number>();
   pendingFields = new Map<string, RelationField[]>();
   modelCollection = new Map<ModelStatic<any>, Collection>();
+  modelNameCollectionMap = new Map<string, Collection>();
   tableNameCollectionMap = new Map<string, Collection>();
-
-  referenceMap = new ReferencesMap();
+  context: any = {};
+  queryInterface: QueryInterface;
+  utils = new DatabaseUtils(this);
+  referenceMap = new ReferencesMap(this);
   inheritanceMap = new InheritanceMap();
-
-  importedFrom = new Map<string, Array<string>>();
-
+  importedFrom = new Map<string, Set<string>>();
   modelHook: ModelHook;
-  version: DatabaseVersion;
-
   delayCollectionExtend = new Map<string, { collectionOptions: CollectionOptions; mergeOptions?: any }[]>();
+  logger: Logger;
+  interfaceManager = new InterfaceManager(this);
+  collectionFactory: CollectionFactory = new CollectionFactory(this);
+  dialect: BaseDialect;
+
+  declare emitAsync: (event: string | symbol, ...args: any[]) => Promise<boolean>;
+
+  static registerDialect(dialect: typeof BaseDialect) {
+    this.dialects.set(dialect.dialectName, dialect);
+  }
+
+  static getDialect(name: string) {
+    return this.dialects.get(name);
+  }
 
   constructor(options: DatabaseOptions) {
     super();
 
-    this.version = new DatabaseVersion(this);
+    const dialectClass = Database.getDialect(options.dialect);
+
+    if (!dialectClass) {
+      throw new Error(`unsupported dialect ${options.dialect}`);
+    }
+
+    // @ts-ignore
+    this.dialect = new dialectClass();
 
     const opts = {
       sync: {
@@ -180,11 +192,30 @@ export class Database extends EventEmitter implements AsyncEmitter {
       ...lodash.clone(options),
     };
 
+    if (options.logger) {
+      if (typeof options.logger['log'] === 'function') {
+        this.logger = options.logger as Logger;
+      } else {
+        this.logger = createLogger(options.logger);
+      }
+    } else {
+      this.logger = createConsoleLogger();
+    }
+
+    if (!options.instanceId) {
+      this._instanceId = nanoid();
+    } else {
+      this._instanceId = options.instanceId;
+    }
+
     if (options.storage && options.storage !== ':memory:') {
       if (!isAbsolute(options.storage)) {
         opts.storage = resolve(process.cwd(), options.storage);
       }
     }
+
+    // @ts-ignore
+    opts.rawTimezone = opts.timezone;
 
     if (options.dialect === 'sqlite') {
       delete opts.timezone;
@@ -193,12 +224,38 @@ export class Database extends EventEmitter implements AsyncEmitter {
     }
 
     if (options.dialect === 'postgres') {
-      // https://github.com/sequelize/sequelize/issues/1774
-      require('pg').defaults.parseInt8 = true;
+      const types = require('pg').types;
+
+      types.setTypeParser(types.builtins.INT8, function (val) {
+        if (val <= Number.MAX_SAFE_INTEGER) {
+          return Number(val);
+        }
+
+        return val;
+      });
     }
 
-    this.sequelize = new Sequelize(opts);
+    if (options.logging && process.env['DB_SQL_BENCHMARK'] == 'true') {
+      opts.benchmark = true;
+    }
+
     this.options = opts;
+
+    this.logger.debug(
+      `create database instance: ${safeJsonStringify(
+        // remove sensitive information
+        lodash.omit(this.options, ['storage', 'host', 'password']),
+      )}`,
+      {
+        databaseInstanceId: this.instanceId,
+      },
+    );
+
+    const sequelizeOptions = this.sequelizeOptions(this.options);
+    this.sequelize = new Sequelize(sequelizeOptions);
+
+    this.queryInterface = buildQueryInterface(this);
+
     this.collections = new Map();
     this.modelHook = new ModelHook(this);
 
@@ -211,7 +268,7 @@ export class Database extends EventEmitter implements AsyncEmitter {
     });
 
     // register database field types
-    for (const [name, field] of Object.entries(FieldTypes)) {
+    for (const [name, field] of Object.entries<any>(FieldTypes)) {
       if (['Field', 'RelationField'].includes(name)) {
         continue;
       }
@@ -221,6 +278,9 @@ export class Database extends EventEmitter implements AsyncEmitter {
         [key]: field,
       });
     }
+
+    registerInterfaces(this);
+    registerFieldValueParsers(this);
 
     this.initOperators();
 
@@ -235,36 +295,115 @@ export class Database extends EventEmitter implements AsyncEmitter {
 
     this.migrations = new Migrations(context);
 
-    this.migrator = new Umzug({
-      logger: migratorOptions.logger || console,
-      migrations: this.migrations.callback(),
-      context,
-      storage: new SequelizeStorage({
-        modelName: `${this.options.tablePrefix || ''}migrations`,
-        ...migratorOptions.storage,
-        sequelize: this.sequelize,
-      }),
+    this.sequelize.beforeDefine((model, opts) => {
+      if (this.options.tablePrefix) {
+        if (opts.tableName && opts.tableName.startsWith(this.options.tablePrefix)) {
+          return;
+        }
+        opts.tableName = `${this.options.tablePrefix}${opts.tableName || opts.modelName || opts.name.plural}`;
+      }
     });
 
     this.collection({
       name: 'migrations',
       autoGenId: false,
       timestamps: false,
-      fields: [{ type: 'string', name: 'name' }],
+      dumpRules: 'required',
+      origin: '@nocobase/database',
+      fields: [{ type: 'string', name: 'name', primaryKey: true }],
     });
 
-    this.sequelize.beforeDefine((model, opts) => {
-      if (this.options.tablePrefix) {
-        opts.tableName = `${this.options.tablePrefix}${opts.tableName || opts.modelName || opts.name.plural}`;
-      }
+    this.migrator = new Umzug({
+      logger: migratorOptions.logger || console,
+      migrations: this.migrations.callback(),
+      context,
+      storage: new SequelizeStorage({
+        tableName: `${this.options.tablePrefix || ''}migrations`,
+        modelName: 'migrations',
+        ...migratorOptions.storage,
+        sequelize: this.sequelize,
+      }),
     });
 
     this.initListener();
+    patchSequelizeQueryInterface(this);
+
+    this.registerCollectionType();
   }
 
+  _instanceId: string;
+
+  get instanceId() {
+    return this._instanceId;
+  }
+
+  /**
+   * @internal
+   */
+  createMigrator({ migrations }) {
+    const migratorOptions: any = this.options.migrator || {};
+    const context = {
+      db: this,
+      sequelize: this.sequelize,
+      queryInterface: this.sequelize.getQueryInterface(),
+      ...migratorOptions.context,
+    };
+    return new Umzug({
+      logger: migratorOptions.logger || console,
+      migrations: Array.isArray(migrations) ? lodash.sortBy(migrations, (m) => m.name) : migrations,
+      context,
+      storage: new SequelizeStorage({
+        tableName: `${this.options.tablePrefix || ''}migrations`,
+        modelName: 'migrations',
+        ...migratorOptions.storage,
+        sequelize: this.sequelize,
+      }),
+    });
+  }
+
+  /**
+   * @internal
+   */
+  setContext(context: any) {
+    this.context = context;
+  }
+
+  /**
+   * @internal
+   */
+  sequelizeOptions(options) {
+    return this.dialect.getSequelizeOptions(options);
+  }
+
+  /**
+   * @internal
+   */
   initListener() {
+    this.on('afterConnect', async (client) => {
+      if (this.inDialect('postgres')) {
+        await client.query('SET search_path = public');
+      }
+    });
+
+    this.on('beforeDefine', (model, options) => {
+      if (this.options.underscored && options.underscored === undefined) {
+        options.underscored = true;
+      }
+    });
+
     this.on('afterCreate', async (instance) => {
       instance?.toChangedWithAssociations?.();
+    });
+
+    this.on('beforeValidate', async (instance) => {
+      for (const [key, attribute] of Object.entries(instance.constructor.rawAttributes)) {
+        // @ts-ignore
+        if (attribute.unique && instance.changed(key)) {
+          if (instance.get(key) === '') {
+            instance.set(key, null);
+          }
+        }
+      }
     });
 
     this.on('afterUpdate', async (instance) => {
@@ -292,6 +431,54 @@ export class Database extends EventEmitter implements AsyncEmitter {
         }
       }
     });
+
+    this.on('afterUpdateCollection', (collection, options) => {
+      if (collection.options.schema) {
+        collection.model._schema = collection.options.schema;
+      }
+      if (collection.options.sql) {
+        collection.modelInit();
+      }
+    });
+
+    this.on('beforeDefineCollection', (options) => {
+      if (this.options.underscored && options.underscored === undefined) {
+        options.underscored = true;
+      }
+
+      if (options.underscored) {
+        if (lodash.get(options, 'indexes')) {
+          // change index fields to snake case
+          options.indexes = options.indexes.map((index) => {
+            if (index.fields) {
+              index.fields = index.fields.map((field) => {
+                if (field.name) {
+                  return { name: snakeCase(field.name), ...field };
+                }
+                return snakeCase(field);
+              });
+            }
+
+            return index;
+          });
+        }
+      }
+
+      if (this.options.schema && !options.schema) {
+        options.schema = this.options.schema;
+      }
+    });
+
+    this.on('afterDefineCollection', async (collection: Collection) => {
+      const options = collection.options;
+      if (options.origin) {
+        const existsSet = this.importedFrom.get(options.origin) || new Set();
+        existsSet.add(collection.name);
+        this.importedFrom.set(options.origin, existsSet);
+      }
+    });
+
+    registerBuiltInListeners(this);
   }
 
   addMigration(item: MigrationItem) {
@@ -304,12 +491,14 @@ export class Database extends EventEmitter implements AsyncEmitter {
     const files = glob.sync(patten, {
       ignore: ['**/*.d.ts'],
     });
+
     for (const file of files) {
       let filename = basename(file);
       filename = filename.substring(0, filename.lastIndexOf('.')) || filename;
+
       this.migrations.add({
         name: namespace ? `${namespace}/${filename}` : filename,
-        migration: requireModule(file),
+        migration: file,
         context,
       });
     }
@@ -319,6 +508,14 @@ export class Database extends EventEmitter implements AsyncEmitter {
     return dialect.includes(this.sequelize.getDialect());
   }
 
+  isMySQLCompatibleDialect() {
+    return this.inDialect('mysql', 'mariadb');
+  }
+
+  isPostgresCompatibleDialect() {
+    return this.inDialect('postgres');
+  }
+
   /**
    * Add collection to database
    * @param options
@@ -326,19 +523,19 @@ export class Database extends EventEmitter implements AsyncEmitter {
   collection<Attributes = any, CreateAttributes = Attributes>(
     options: CollectionOptions,
   ): Collection<Attributes, CreateAttributes> {
+    options = lodash.cloneDeep(options);
+
+    if (this.options.underscored) {
+      options.underscored = true;
+    }
+
+    this.logger.trace(`beforeDefineCollection: ${safeJsonStringify(options)}`, {
+      databaseInstanceId: this.instanceId,
+    });
+
     this.emit('beforeDefineCollection', options);
 
-    const hasValidInheritsOptions = (() => {
-      return options.inherits && lodash.castArray(options.inherits).length > 0;
-    })();
-
-    const collection = hasValidInheritsOptions
-      ? new InheritedCollection(options, {
-          database: this,
-        })
-      : new Collection(options, {
-          database: this,
-        });
+    const collection = this.collectionFactory.createCollection(options);
 
     this.collections.set(collection.name, collection);
 
@@ -351,6 +548,35 @@ export class Database extends EventEmitter implements AsyncEmitter {
     return this.options.tablePrefix || '';
   }
 
+  getFieldByPath(path: string) {
+    if (!path) {
+      return;
+    }
+
+    const [collectionName, associationName, ...args] = path.split('.');
+    const collection = this.getCollection(collectionName);
+
+    if (!collection) {
+      return;
+    }
+
+    const field = collection.getField(associationName);
+
+    if (!field) {
+      return;
+    }
+
+    if (args.length > 0) {
+      return this.getFieldByPath(`${field?.target}.${args.join('.')}`);
+    }
+
+    return field;
+  }
+
+  getCollectionByModelName(name: string) {
+    return this.modelNameCollectionMap.get(name);
+  }
+
   /**
    * get exists collection by its name
    * @param name
@@ -361,7 +587,7 @@ export class Database extends EventEmitter implements AsyncEmitter {
     }
 
     const [collectionName, associationName] = name.split('.');
-    let collection = this.collections.get(collectionName);
+    const collection = this.collections.get(collectionName);
 
     if (associationName) {
       const target = collection.getField(associationName)?.target;
@@ -372,7 +598,7 @@ export class Database extends EventEmitter implements AsyncEmitter {
   }
 
   hasCollection(name: string): boolean {
-    return this.collections.has(name);
+    return !!this.getCollection(name);
   }
 
   removeCollection(name: string) {
@@ -397,10 +623,12 @@ export class Database extends EventEmitter implements AsyncEmitter {
   }
 
   getRepository<R extends Repository>(name: string): R;
-  getRepository<R extends RelationRepository>(name: string, relationId: string | number): R;
-  getRepository<R extends ArrayFieldRepository>(name: string, relationId: string | number): R;
 
-  getRepository<R extends RelationRepository>(name: string, relationId?: string | number): Repository | R {
+  getRepository<R extends RelationRepository>(name: string, relationId: TargetKey): R;
+
+  getRepository<R extends ArrayFieldRepository>(name: string, relationId: TargetKey): R;
+
+  getRepository<R extends RelationRepository>(name: string, relationId?: TargetKey): Repository | R {
     const [collection, relation] = name.split('.');
     if (relation) {
       return this.getRepository(collection)?.relation(relation)?.of(relationId) as R;
@@ -408,6 +636,9 @@ export class Database extends EventEmitter implements AsyncEmitter {
     return this.getCollection(name)?.repository;
   }
 
+  /**
+   * @internal
+   */
   addPendingField(field: RelationField) {
     const associating = this.pendingFields;
     const items = this.pendingFields.get(field.target) || [];
@@ -415,6 +646,9 @@ export class Database extends EventEmitter implements AsyncEmitter {
     associating.set(field.target, items);
   }
 
+  /**
+   * @internal
+   */
   removePendingField(field: RelationField) {
     const items = this.pendingFields.get(field.target) || [];
     const index = items.indexOf(field);
@@ -430,6 +664,21 @@ export class Database extends EventEmitter implements AsyncEmitter {
     }
   }
 
+  registerFieldValueParsers(parsers: MapOf<any>) {
+    for (const [type, parser] of Object.entries(parsers)) {
+      this.fieldValueParsers.set(type, parser);
+    }
+  }
+
+  buildFieldValueParser<T extends BaseValueParser>(field: Field, ctx: any) {
+    const Parser =
+      field && this.fieldValueParsers.has(field.type)
+        ? this.fieldValueParsers.get(field.type)
+        : this.fieldValueParsers.get('default');
+    const parser = new Parser(field, ctx);
+    return parser as T;
+  }
+
   registerModels(models: MapOf<ModelStatic<any>>) {
     for (const [type, schemaType] of Object.entries(models)) {
       this.models.set(type, schemaType);
@@ -442,6 +691,9 @@ export class Database extends EventEmitter implements AsyncEmitter {
     }
   }
 
+  /**
+   * @internal
+   */
   initOperators() {
     const operators = new Map();
 
@@ -456,7 +708,7 @@ export class Database extends EventEmitter implements AsyncEmitter {
     this.operators = operators;
 
     this.registerOperators({
-      ...extendOperators,
+      ...(extendOperators as unknown as MapOf<OperatorFunc>),
     });
   }
 
@@ -466,6 +718,9 @@ export class Database extends EventEmitter implements AsyncEmitter {
     }
   }
 
+  /**
+   * @internal
+   */
   buildField(options, context: FieldContext) {
     const { type } = options;
 
@@ -475,13 +730,27 @@ export class Database extends EventEmitter implements AsyncEmitter {
       throw Error(`unsupported field type ${type}`);
     }
 
+    const { collection } = context;
+
+    if (options.field && collection.options.underscored && !collection.isView()) {
+      options.field = snakeCase(options.field);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(options, 'defaultValue') && options.defaultValue === null) {
+      delete options.defaultValue;
+    }
+
     return new Field(options, context);
   }
 
   async sync(options?: SyncOptions) {
-    const isMySQL = this.sequelize.getDialect() === 'mysql';
+    const isMySQL = this.isMySQLCompatibleDialect();
     if (isMySQL) {
       await this.sequelize.query('SET FOREIGN_KEY_CHECKS = 0', null);
+    }
+
+    if (this.options.schema && this.inDialect('postgres')) {
+      await this.sequelize.query(`CREATE SCHEMA IF NOT EXISTS "${this.options.schema}"`, null);
     }
 
     const result = await this.sequelize.sync(options);
@@ -494,43 +763,105 @@ export class Database extends EventEmitter implements AsyncEmitter {
   }
 
   async clean(options: CleanOptions) {
-    const { drop, ...others } = options;
-    if (drop) {
-      await this.sequelize.getQueryInterface().dropAllTables(others);
+    const { drop, ...others } = options || {};
+    if (drop !== true) {
+      return;
     }
+
+    if (this.options.schema) {
+      const tableNames = (await this.sequelize.getQueryInterface().showAllTables()).map((table) => {
+        return `"${this.options.schema}"."${table}"`;
+      });
+
+      const skip = options.skip || [];
+
+      // @ts-ignore
+      for (const tableName of tableNames) {
+        if (skip.includes(tableName)) {
+          continue;
+        }
+        await this.sequelize.query(`DROP TABLE IF EXISTS ${tableName} CASCADE`);
+      }
+      return;
+    }
+
+    await this.queryInterface.dropAll(options);
   }
 
-  async collectionExistsInDb(name, options?: Transactionable) {
-    const tables = await this.sequelize.getQueryInterface().showAllTables({
-      transaction: options?.transaction,
-    });
-    return !!tables.find((table) => table === `${this.getTablePrefix()}${name}`);
+  async collectionExistsInDb(name: string, options?: Transactionable) {
+    const collection = this.getCollection(name);
+
+    if (!collection) {
+      return false;
+    }
+
+    return await this.queryInterface.collectionTableExists(collection, options);
   }
 
-  public isSqliteMemory() {
+  isSqliteMemory() {
     return this.sequelize.getDialect() === 'sqlite' && lodash.get(this.options, 'storage') == ':memory:';
   }
 
-  async auth(options: QueryOptions & { retry?: number } = {}) {
-    const { retry = 10, ...others } = options;
-    const delay = (ms) => new Promise((yea) => setTimeout(yea, ms));
-    let count = 1;
+  /* istanbul ignore next -- @preserve */
+  async auth(options: Omit<QueryOptions, 'retry'> & { retry?: number | Pick<QueryOptions, 'retry'> } = {}) {
+    const { retry = 9, ...others } = options;
+    const startingDelay = 50;
+    const timeMultiple = 2;
+
+    let attemptNumber = 1; // To track the current attempt number
+
     const authenticate = async () => {
       try {
         await this.sequelize.authenticate(others);
-        console.log('Connection has been established successfully.');
-        return true;
+        this.logger.info('connection has been established successfully.', { method: 'auth' });
       } catch (error) {
-        if (count >= retry) {
-          throw new Error('Connection failed, please check your database connection credentials and try again.');
+        this.logger.warn(`attempt ${attemptNumber}/${retry}: Unable to connect to the database: ${error.message}`, {
+          method: 'auth',
+        });
+        const nextDelay = startingDelay * Math.pow(timeMultiple, attemptNumber - 1);
+        attemptNumber++;
+        if (attemptNumber < (retry as number)) {
+          this.logger.warn(`will retry in ${nextDelay}ms...`, { method: 'auth' });
         }
-        console.log('reconnecting...', count);
-        ++count;
-        await delay(500);
-        return await authenticate();
+        throw error; // Re-throw the error so that backoff can catch and handle it
       }
     };
-    return await authenticate();
+
+    try {
+      await backOff(authenticate, {
+        numOfAttempts: retry as number,
+        startingDelay: startingDelay,
+        timeMultiple: timeMultiple,
+      });
+    } catch (error) {
+      throw new Error(`Unable to connect to the database`, { cause: error });
+    }
+  }
+
+  /**
+   * @internal
+   */
+  async checkVersion() {
+    return process.env.DB_SKIP_VERSION_CHECK === 'on' || (await checkDatabaseVersion(this));
+  }
+
+  /**
+   * @internal
+   */
+  async prepare() {
+    if (this.isMySQLCompatibleDialect()) {
+      const result = await this.sequelize.query(`SHOW VARIABLES LIKE 'lower_case_table_names'`, { plain: true });
+
+      if (result?.Value === '1' && !this.options.underscored) {
+        throw new Error(
+          `Your database lower_case_table_names=1, please add ${chalk.yellow('DB_UNDERSCORED=true')} to the .env file`,
+        );
+      }
+    }
+
+    if (this.inDialect('postgres') && this.options.schema && this.options.schema != 'public') {
+      await this.sequelize.query(`CREATE SCHEMA IF NOT EXISTS "${this.options.schema}"`, null);
+    }
   }
 
   async reconnect() {
@@ -557,25 +888,46 @@ export class Database extends EventEmitter implements AsyncEmitter {
       return;
     }
 
-    return this.sequelize.close();
+    await this.emitAsync('beforeClose', this);
+
+    const closeResult = this.sequelize.close();
+
+    if (this.options?.customHooks?.['afterClose']) {
+      await this.options.customHooks['afterClose'](this);
+    }
+
+    return closeResult;
   }
 
   on(event: EventType, listener: any): this;
+
   on(event: ModelValidateEventTypes, listener: SyncListener): this;
+
   on(event: ModelValidateEventTypes, listener: ValidateListener): this;
+
   on(event: ModelCreateEventTypes, listener: CreateListener): this;
+
   on(event: ModelUpdateEventTypes, listener: UpdateListener): this;
+
   on(event: ModelSaveEventTypes, listener: SaveListener): this;
+
   on(event: ModelDestroyEventTypes, listener: DestroyListener): this;
+
   on(event: ModelCreateWithAssociationsEventTypes, listener: CreateWithAssociationsListener): this;
+
   on(event: ModelUpdateWithAssociationsEventTypes, listener: UpdateWithAssociationsListener): this;
+
   on(event: ModelSaveWithAssociationsEventTypes, listener: SaveWithAssociationsListener): this;
+
   on(event: DatabaseBeforeDefineCollectionEventType, listener: BeforeDefineCollectionListener): this;
+
   on(event: DatabaseAfterDefineCollectionEventType, listener: AfterDefineCollectionListener): this;
+
   on(
     event: DatabaseBeforeRemoveCollectionEventType | DatabaseAfterRemoveCollectionEventType,
     listener: RemoveCollectionListener,
   ): this;
+
   on(event: EventType, listener: any): this {
     // NOTE: to match if event is a sequelize or model type
     const type = this.modelHook.match(event);
@@ -589,6 +941,7 @@ export class Database extends EventEmitter implements AsyncEmitter {
   }
 
   extendCollection(collectionOptions: CollectionOptions, mergeOptions?: MergeOptions) {
+    collectionOptions = lodash.cloneDeep(collectionOptions);
     const collectionName = collectionOptions.name;
     const existCollection = this.getCollection(collectionName);
     if (existCollection) {
@@ -613,11 +966,10 @@ export class Database extends EventEmitter implements AsyncEmitter {
       if (module.extend) {
         this.extendCollection(module.collectionOptions, module.mergeOptions);
       } else {
-        const collection = this.collection(module);
-
-        if (options.from) {
-          this.importedFrom.set(options.from, [...(this.importedFrom.get(options.from) || []), collection.name]);
-        }
+        const collection = this.collection({
+          ...module,
+          origin: options.from,
+        });
 
         result.set(collection.name, collection);
       }
@@ -626,7 +978,40 @@ export class Database extends EventEmitter implements AsyncEmitter {
     return result;
   }
 
-  declare emitAsync: (event: string | symbol, ...args: any[]) => Promise<boolean>;
+  private registerCollectionType() {
+    this.collectionFactory.registerCollectionType(InheritedCollection, {
+      condition: (options) => {
+        return options.inherits && lodash.castArray(options.inherits).length > 0;
+      },
+    });
+
+    this.collectionFactory.registerCollectionType(ViewCollection, {
+      condition: (options) => {
+        return options.viewName || options.view;
+      },
+
+      async onSync() {
+        return;
+      },
+
+      async onDump(dumper, collection: Collection) {
+        try {
+          const viewDef = await collection.db.queryInterface.viewDef(collection.getTableNameWithSchemaAsString());
+
+          dumper.writeSQLContent(`view-${collection.name}`, {
+            sql: [
+              `DROP VIEW IF EXISTS ${collection.getTableNameWithSchemaAsString()}`,
+              `CREATE VIEW ${collection.getTableNameWithSchemaAsString()} AS ${viewDef}`,
+            ],
+            group: 'required',
+          });
+        } catch (e) {
+          return;
+        }
+        return;
+      },
+    });
+  }
 }
 
 export function extendCollection(collectionOptions: CollectionOptions, mergeOptions?: MergeOptions) {
@@ -644,5 +1029,6 @@ export const defineCollection = (collectionOptions: CollectionOptions) => {
 };
 
 applyMixins(Database, [AsyncEmitter]);
+registerDialects();
 
 export default Database;

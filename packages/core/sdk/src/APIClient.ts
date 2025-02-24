@@ -1,4 +1,13 @@
-import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse, RawAxiosRequestHeaders } from 'axios';
 import qs from 'qs';
 
 export interface ActionParams {
@@ -13,29 +22,48 @@ type ResourceActionOptions<P = any> = {
   params?: P;
 };
 
-export interface IResource {
-  list?: (params?: ActionParams) => Promise<any>;
-  get?: (params?: ActionParams) => Promise<any>;
-  create?: (params?: ActionParams) => Promise<any>;
-  update?: (params?: ActionParams) => Promise<any>;
-  destroy?: (params?: ActionParams) => Promise<any>;
-  [key: string]: (params?: ActionParams) => Promise<any>;
-}
+type ResourceAction = (params?: ActionParams, opts?: any) => Promise<any>;
+
+export type IResource = {
+  [key: string]: ResourceAction;
+};
 
 export class Auth {
   protected api: APIClient;
 
+  get storagePrefix() {
+    return this.api.storagePrefix;
+  }
+
+  get KEYS() {
+    const defaults = {
+      locale: this.storagePrefix + 'LOCALE',
+      role: this.storagePrefix + 'ROLE',
+      token: this.storagePrefix + 'TOKEN',
+      authenticator: this.storagePrefix + 'AUTH',
+      theme: this.storagePrefix + 'THEME',
+    };
+
+    if (this.api['app']) {
+      const appName = this.api['app']?.getName?.();
+      if (appName) {
+        defaults['role'] = `${appName.toUpperCase()}_` + defaults['role'];
+        defaults['locale'] = `${appName.toUpperCase()}_` + defaults['locale'];
+      }
+    }
+
+    return defaults;
+  }
+
   protected options = {
-    token: null,
     locale: null,
     role: null,
+    authenticator: null,
+    token: null,
   };
 
   constructor(api: APIClient) {
     this.api = api;
-    this.locale = this.getLocale();
-    this.role = this.getRole();
-    this.token = this.getToken();
     this.api.axios.interceptors.request.use(this.middleware.bind(this));
   }
 
@@ -43,24 +71,123 @@ export class Auth {
     return this.getLocale();
   }
 
+  set locale(value: string) {
+    this.setLocale(value);
+  }
+
   get role() {
     return this.getRole();
+  }
+
+  set role(value: string) {
+    this.setRole(value);
   }
 
   get token() {
     return this.getToken();
   }
 
-  set locale(value) {
-    this.setLocale(value);
-  }
-
-  set role(value) {
-    this.setRole(value);
-  }
-
-  set token(value) {
+  set token(value: string) {
     this.setToken(value);
+  }
+
+  get authenticator() {
+    return this.getAuthenticator();
+  }
+
+  set authenticator(value: string) {
+    this.setAuthenticator(value);
+  }
+
+  /**
+   * @internal
+   */
+  getOption(key: string) {
+    if (!this.KEYS[key]) {
+      return;
+    }
+    return this.api.storage.getItem(this.KEYS[key]);
+  }
+
+  /**
+   * @internal
+   */
+  setOption(key: string, value?: string) {
+    if (!this.KEYS[key]) {
+      return;
+    }
+    this.options[key] = value;
+    return this.api.storage.setItem(this.KEYS[key], value || '');
+  }
+
+  /**
+   * @internal
+   * use {@link Auth#locale} instead
+   */
+  getLocale() {
+    return this.getOption('locale');
+  }
+
+  /**
+   * @internal
+   * use {@link Auth#locale} instead
+   */
+  setLocale(locale: string) {
+    this.setOption('locale', locale);
+  }
+
+  /**
+   * @internal
+   * use {@link Auth#role} instead
+   */
+  getRole() {
+    return this.getOption('role');
+  }
+
+  /**
+   * @internal
+   * use {@link Auth#role} instead
+   */
+  setRole(role: string) {
+    this.setOption('role', role);
+  }
+
+  /**
+   * @internal
+   * use {@link Auth#token} instead
+   */
+  getToken() {
+    return this.getOption('token');
+  }
+
+  /**
+   * @internal
+   * use {@link Auth#token} instead
+   */
+  setToken(token: string) {
+    this.setOption('token', token);
+
+    if (this.api['app']) {
+      this.api['app'].eventBus.dispatchEvent(
+        new CustomEvent('auth:tokenChanged', { detail: { token, authenticator: this.authenticator } }),
+      );
+    }
+  }
+
+  /**
+   * @internal
+   * use {@link Auth#authenticator} instead
+   */
+  getAuthenticator() {
+    return this.getOption('authenticator');
+  }
+
+  /**
+   * @internal
+   * use {@link Auth#authenticator} instead
+   */
+  setAuthenticator(authenticator: string) {
+    this.setOption('authenticator', authenticator);
   }
 
   middleware(config: AxiosRequestConfig) {
@@ -70,63 +197,50 @@ export class Auth {
     if (this.role) {
       config.headers['X-Role'] = this.role;
     }
+    if (this.authenticator && !config.headers['X-Authenticator']) {
+      config.headers['X-Authenticator'] = this.authenticator;
+    }
     if (this.token) {
       config.headers['Authorization'] = `Bearer ${this.token}`;
     }
     return config;
   }
 
-  getLocale() {
-    return this.api.storage.getItem('NOCOBASE_LOCALE');
-  }
-
-  setLocale(locale: string) {
-    this.options.locale = locale;
-    this.api.storage.setItem('NOCOBASE_LOCALE', locale || '');
-  }
-
-  getToken() {
-    return this.api.storage.getItem('NOCOBASE_TOKEN');
-  }
-
-  setToken(token: string) {
-    this.options.token = token;
-    this.api.storage.setItem('NOCOBASE_TOKEN', token || '');
-    if (!token) {
-      this.setRole(null);
-      // this.setLocale(null);
-    }
-  }
-
-  getRole() {
-    return this.api.storage.getItem('NOCOBASE_ROLE');
-  }
-
-  setRole(role: string) {
-    this.options.role = role;
-    this.api.storage.setItem('NOCOBASE_ROLE', role || '');
-  }
-
-  async signIn(values, authenticator: string = 'password'): Promise<AxiosResponse<any>> {
+  async signIn(values: any, authenticator?: string): Promise<AxiosResponse<any>> {
     const response = await this.api.request({
       method: 'post',
-      url: 'users:signin',
+      url: 'auth:signIn',
       data: values,
-      params: {
-        authenticator,
+      headers: {
+        'X-Authenticator': authenticator,
       },
     });
     const data = response?.data?.data;
+    this.setAuthenticator(authenticator);
     this.setToken(data?.token);
     return response;
   }
 
-  async signOut() {
-    await this.api.request({
+  async signUp(values: any, authenticator?: string): Promise<AxiosResponse<any>> {
+    return await this.api.request({
       method: 'post',
-      url: 'users:signout',
+      url: 'auth:signUp',
+      data: values,
+      headers: {
+        'X-Authenticator': authenticator,
+      },
+    });
+  }
+
+  async signOut() {
+    const response = await this.api.request({
+      method: 'post',
+      url: 'auth:signOut',
     });
     this.setToken(null);
+    this.setRole(null);
+    this.setAuthenticator(null);
+    return response;
   }
 }
 
@@ -159,21 +273,46 @@ export class MemoryStorage extends Storage {
 
 interface ExtendedOptions {
   authClass?: any;
+  storageType?: 'localStorage' | 'sessionStorage' | 'memory';
   storageClass?: any;
+  storagePrefix?: string;
 }
 
+export type APIClientOptions = AxiosInstance | (AxiosRequestConfig & ExtendedOptions);
+
 export class APIClient {
+  options?: APIClientOptions;
   axios: AxiosInstance;
   auth: Auth;
   storage: Storage;
+  storagePrefix = 'NOCOBASE_';
 
-  constructor(instance?: AxiosInstance | (AxiosRequestConfig & ExtendedOptions)) {
-    if (typeof instance === 'function') {
-      this.axios = instance;
+  getHeaders() {
+    const headers = {};
+    if (this.auth.locale) {
+      headers['X-Locale'] = this.auth.locale;
+    }
+    if (this.auth.role) {
+      headers['X-Role'] = this.auth.role;
+    }
+    if (this.auth.authenticator) {
+      headers['X-Authenticator'] = this.auth.authenticator;
+    }
+    if (this.auth.token) {
+      headers['Authorization'] = `Bearer ${this.auth.token}`;
+    }
+    return headers;
+  }
+
+  constructor(options?: APIClientOptions) {
+    this.options = options;
+    if (typeof options === 'function') {
+      this.axios = options;
     } else {
-      const { authClass, storageClass, ...others } = instance || {};
+      const { authClass, storageType, storageClass, storagePrefix = 'NOCOBASE_', ...others } = options || {};
+      this.storagePrefix = storagePrefix;
       this.axios = axios.create(others);
-      this.initStorage(storageClass);
+      this.initStorage(storageClass, storageType);
       if (authClass) {
         this.auth = new authClass(this);
       }
@@ -187,14 +326,20 @@ export class APIClient {
     this.interceptors();
   }
 
-  private initStorage(storage?: any) {
+  private initStorage(storage?: any, storageType = 'localStorage') {
     if (storage) {
       this.storage = new storage(this);
-    } else if (typeof localStorage !== 'undefined') {
-      this.storage = localStorage;
-    } else {
-      this.storage = new MemoryStorage();
+      return;
     }
+    if (storageType === 'localStorage' && typeof localStorage !== 'undefined') {
+      this.storage = localStorage;
+      return;
+    }
+    if (storageType === 'sessionStorage' && typeof sessionStorage !== 'undefined') {
+      this.storage = sessionStorage;
+      return;
+    }
+    this.storage = new MemoryStorage();
   }
 
   interceptors() {
@@ -210,19 +355,23 @@ export class APIClient {
   }
 
   request<T = any, R = AxiosResponse<T>, D = any>(config: AxiosRequestConfig<D> | ResourceActionOptions): Promise<R> {
-    const { resource, resourceOf, action, params } = config as any;
+    const { resource, resourceOf, action, params, headers } = config as any;
     if (resource) {
-      return this.resource(resource, resourceOf)[action](params);
+      return this.resource(resource, resourceOf, headers)[action](params);
     }
     return this.axios.request<T, R, D>(config);
   }
 
-  resource(name: string, of?: any): IResource {
+  resource(name: string, of?: any, headers?: RawAxiosRequestHeaders, cancel?: boolean): IResource {
     const target = {};
     const handler = {
       get: (_: any, actionName: string) => {
-        let url = name.split('.').join(`/${of || '_'}/`);
-        url += `:${actionName}`;
+        if (cancel) {
+          return;
+        }
+
+        let url = name.split('.').join(`/${encodeURIComponent(of) || '_'}/`);
+        url += `:${actionName.toString()}`;
         const config: AxiosRequestConfig = { url };
         if (['get', 'list'].includes(actionName)) {
           config['method'] = 'get';
@@ -236,6 +385,9 @@ export class APIClient {
             if (typeof filter === 'string') {
               config['params']['filter'] = filter;
             } else {
+              if (filter['*']) {
+                delete filter['*'];
+              }
               config['params']['filter'] = JSON.stringify(filter);
             }
           }
@@ -245,6 +397,7 @@ export class APIClient {
           return await this.request({
             ...config,
             ...opts,
+            headers,
           });
         };
       },

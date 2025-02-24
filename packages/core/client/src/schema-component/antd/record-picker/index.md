@@ -1,13 +1,12 @@
----
-nav:
-  path: /client
-group:
-  path: /schema-components
----
+# RecordPicker
 
-# RecordPicker - 记录选择器 <Badge>待定</Badge>
+用于关联字段的选择。
 
 ## JSON Schema
+
+### Examples
+
+<code src="./demos/demo1.tsx"></code>
 
 通过弹窗选择可选项，可选项用表格展示，在特定的 `RecordPicker.RowSelection` 节点里配置，仅当 `x-read-pretty: false` 时有效。
 
@@ -32,7 +31,7 @@ group:
 ```ts
 {
   type: 'array',
-  'x-read-pretty': true,
+  'x-pattern': 'readPretty',
   'x-component': 'RecordPicker',
   properties: {
     item: {
@@ -76,7 +75,3 @@ group:
   },
 }
 ```
-
-## Examples
-
-<code src="./demos/demo1.tsx"/>

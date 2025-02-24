@@ -1,3 +1,14 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
+import { vi } from 'vitest';
+import { Context } from '@nocobase/actions';
 import { ACL } from '..';
 
 describe('acl', () => {
@@ -37,6 +48,28 @@ describe('acl', () => {
         },
       },
     });
+  });
+
+  it('should getRole', () => {
+    const role = acl.define({
+      role: 'admin',
+      actions: {
+        'posts:edit': {
+          own: true,
+        },
+      },
+    });
+
+    expect(acl.getRole('admin')).toBe(role);
+  });
+
+  it('should set available action', () => {
+    acl.setAvailableAction('edit', {
+      displayName: 'Edit',
+    });
+
+    const action = acl.getAvailableAction('edit');
+    expect(action.name).toBe('edit');
   });
 
   it('should define role with predicate', () => {
@@ -353,5 +386,57 @@ describe('acl', () => {
         'posts:create': {},
       },
     });
+  });
+
+  it('should clone can result deeply', () => {
+    vi.spyOn(acl, 'can').mockReturnValue({
+      role: 'root',
+      resource: 'Test',
+      action: {
+        resourceName: 'test',
+        actionName: 'create',
+      },
+      params: {
+        fields: [],
+      },
+    });
+    const newConext = () => ({
+      state: {},
+      action: {
+        resourceName: 'test',
+        actionName: 'create',
+      },
+      throw: () => {},
+    });
+    const ctx1 = newConext() as Context;
+    const ctx2 = newConext() as Context;
+    acl.getActionParams(ctx1);
+    acl.getActionParams(ctx2);
+    ctx1.permission.can.params.fields.push('createdById');
+    expect(ctx2.permission.can.params.fields).toEqual([]);
+  });
+
+  it('should not allow when strategyResources is set', async () => {
+    acl.setAvailableAction('create', {
+      displayName: 'create',
+      type: 'new-data',
+    });
+
+    const role = acl.define({
+      role: 'admin',
+      strategy: {
+        actions: ['create'],
+      },
+    });
+
+    expect(acl.can({ role: 'admin', resource: 'users', action: 'create' })).toBeTruthy();
+
+    acl.setStrategyResources(['posts']);
+
+    expect(acl.can({ role: 'admin', resource: 'users', action: 'create' })).toBeNull();
+
+    acl.setStrategyResources(['posts', 'users']);
+
+    expect(acl.can({ role: 'admin', resource: 'users', action: 'create' })).toBeTruthy();
   });
 });

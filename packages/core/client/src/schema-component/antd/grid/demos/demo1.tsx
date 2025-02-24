@@ -1,23 +1,38 @@
+
+
 import { observer, useFieldSchema } from '@formily/react';
-import { BlockItem, DragHandler, Grid, SchemaComponent, SchemaComponentProvider } from '@nocobase/client';
+import {
+  Application,
+  BlockItem,
+  Plugin,
+  DragHandler,
+  Grid,
+  SchemaComponent,
+  SchemaComponentProvider,
+} from '@nocobase/client';
 import React from 'react';
 
-const Block = observer((props) => {
-  const fieldSchema = useFieldSchema();
-  return (
-    <div style={{ marginBottom: 20, padding: '0 20px', height: 50, lineHeight: '50px', background: '#f1f1f1' }}>
-      Block {fieldSchema.title}
-      <DragHandler />
-    </div>
-  );
-});
+const Block = observer(
+  (props) => {
+    const fieldSchema = useFieldSchema();
+    return (
+      <div
+        className="block-item"
+        style={{ marginBottom: 20, padding: '0 20px', height: 50, lineHeight: '50px', background: '#f1f1f1' }}
+      >
+        Block {fieldSchema.title}
+        <DragHandler />
+      </div>
+    );
+  },
+  { displayName: 'Block' },
+);
 
 const schema = {
   _isJSONSchemaObject: true,
   version: '2.0',
   type: 'void',
   name: 'grid1',
-  'x-decorator': 'CardItem',
   'x-component': 'Grid',
   properties: {
     row1: {
@@ -153,10 +168,29 @@ const schema = {
   },
 };
 
-export default function App() {
+const Root = () => {
   return (
     <SchemaComponentProvider components={{ Grid, Block, BlockItem }}>
       <SchemaComponent schema={schema} />
     </SchemaComponentProvider>
   );
+};
+
+class MyPlugin extends Plugin {
+  async load() {
+    this.app.router.add('root', {
+      path: '/',
+      Component: Root,
+    });
+  }
 }
+
+const app = new Application({
+  router: {
+    type: 'memory',
+    initialEntries: ['/'],
+  },
+  plugins: [MyPlugin],
+});
+
+export default app.getRootComponent();

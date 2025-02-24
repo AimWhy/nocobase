@@ -1,3 +1,12 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { message } from 'antd';
 import React, { createContext, useContext, useState } from 'react';
 
@@ -14,6 +23,7 @@ export const SettingCenterPermissionProvider = (props) => {
 };
 
 export const PermissionContext = createContext<any>(null);
+PermissionContext.displayName = 'PermissionContext';
 
 export const PermissionProvider = (props) => {
   const api = useAPIClient();

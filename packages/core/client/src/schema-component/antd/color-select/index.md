@@ -1,14 +1,22 @@
----
-nav:
-  path: /client
-group:
-  path: /schema-components
----
-
 # ColorSelect
 
-## Examples
+颜色下拉选择器，其基于 ant-design [Select](https://ant.design/components/select/) 组件封装。
 
-### ColorSelect usage
+## Basic Usage
 
-<code src="./demos/demo1.tsx" />
+```ts
+type ColorSelectProps = ColorSelectProps;
+```
+
+<code src="./demos/new-demos/basic.tsx"></code>
+
+## Read Pretty
+
+```ts
+interface ColorSelectReadPrettyProps {
+  value?: string;
+}
+```
+
+<code src="./demos/new-demos/read-pretty.tsx"></code>
+

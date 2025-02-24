@@ -1,155 +1,248 @@
-import { ArrayField, createForm } from '@formily/core';
-import { FormContext, Schema, useField, useFieldSchema } from '@formily/react';
-import uniq from 'lodash/uniq';
-import React, { createContext, useContext, useEffect, useMemo } from 'react';
-import { useCollectionManager } from '../collection-manager';
-import { BlockProvider, RenderChildrenWithAssociationFilter, useBlockRequestContext } from './BlockProvider';
-import { useFixedSchema } from '../schema-component';
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
 
-
+import { createForm } from '@formily/core';
+import { FormContext, useField, useFieldSchema } from '@formily/react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useCollectionManager_deprecated } from '../collection-manager';
+import { withDynamicSchemaProps } from '../hoc/withDynamicSchemaProps';
+import { useTableBlockParams } from '../modules/blocks/data-blocks/table/hooks/useTableBlockDecoratorProps';
+import { SchemaComponentOptions } from '../schema-component';
+import { TableElementRefContext } from '../schema-component/antd/table-v2/Table';
+import { BlockProvider, useBlockRequestContext } from './BlockProvider';
+import { useBlockHeightProps } from './hooks';
+/**
+ * @internal
+ */
 export const TableBlockContext = createContext<any>({});
+TableBlockContext.displayName = 'TableBlockContext';
 
-const InternalTableBlockProvider = (props) => {
-  const { params, showIndex, dragSort, rowKey } = props;
-  const field = useField();
+const TableBlockContextBasicValue = createContext<{
+  field: any;
+  rowKey: string;
+  dragSortBy?: string;
+  childrenColumnName?: string;
+  showIndex?: boolean;
+  dragSort?: boolean;
+}>(null);
+TableBlockContextBasicValue.displayName = 'TableBlockContextBasicValue';
+
+/**
+ * @internal
+ */
+export function getIdsWithChildren(nodes) {
+  const ids = [];
+  if (nodes) {
+    for (const node of nodes) {
+      if (node?.children && node.children.length > 0) {
+        ids.push(node.id);
+        ids.push(...getIdsWithChildren(node?.children));
+      }
+    }
+  }
+  return ids;
+}
+interface Props {
+  params?: any;
+  showIndex?: boolean;
+  dragSort?: boolean;
+  rowKey?: string;
+  childrenColumnName: any;
+  fieldNames?: any;
+  /**
+   * Table 区块的 collection name
+   */
+  collection?: string;
+  children?: any;
+  expandFlag?: boolean;
+  dragSortBy?: string;
+}
+
+const InternalTableBlockProvider = (props: Props) => {
+  const {
+    params,
+    showIndex,
+    dragSort,
+    rowKey,
+    childrenColumnName,
+    expandFlag: propsExpandFlag = false,
+    fieldNames,
+    collection,
+  } = props;
+  const field: any = useField();
   const { resource, service } = useBlockRequestContext();
-  // if (service.loading) {
-  //   return <Spin />;
-  // }
-  useFixedSchema();
-  return (
-    <TableBlockContext.Provider
-      value={{
-        field,
-        service,
-        resource,
-        params,
-        showIndex,
-        dragSort,
-        rowKey,
-      }}
-    >
-      <RenderChildrenWithAssociationFilter {...props} />
-    </TableBlockContext.Provider>
-  );
-};
-
-export const useAssociationNames = (collection) => {
-  const { getCollectionFields } = useCollectionManager();
-  const collectionFields = getCollectionFields(collection);
-  const associationFields = new Set();
-  for (const collectionField of collectionFields) {
-    if (collectionField.target && collectionField.interface !== 'snapshot') {
-      associationFields.add(collectionField.name);
-      const fields = getCollectionFields(collectionField.target);
-      for (const field of fields) {
-        if (field.target) {
-          associationFields.add(`${collectionField.name}.${field.name}`);
-        }
-      }
-    }
-  }
   const fieldSchema = useFieldSchema();
-  const tableSchema = fieldSchema.reduceProperties((buf, schema) => {
-    if (schema['x-component'] === 'TableV2') {
-      return schema;
+  const [expandFlag, setExpandFlag] = useState(fieldNames || propsExpandFlag ? true : false);
+  const { heightProps } = useBlockHeightProps();
+  const tableElementRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setExpandFlag(fieldNames || propsExpandFlag);
+  }, [fieldNames || propsExpandFlag]);
+
+  const allIncludesChildren = useMemo(() => {
+    const { treeTable } = fieldSchema?.['x-decorator-props'] || {};
+    const data = service?.data?.data;
+    if (treeTable) {
+      const keys = getIdsWithChildren(data);
+      return keys;
     }
-    return buf;
-  }, new Schema({}));
-  return uniq(
-    tableSchema.reduceProperties((buf, schema) => {
-      if (schema['x-component'] === 'TableV2.Column') {
-        const s = schema.reduceProperties((buf, s) => {
-          const [name] = (s.name as string).split('.');
-          if (s['x-collection-field'] && associationFields.has(name)) {
-            return s;
-          }
-          return buf;
-        }, null);
-        if (s) {
-          // 关联字段和关联的关联字段
-          const [firstName] = s.name.split('.');
-          if (associationFields.has(s.name)) {
-            buf.push(s.name);
-          } else if (associationFields.has(firstName)) {
-            buf.push(firstName);
-          }
-        }
-      }
-      return buf;
-    }, []),
-  );
-};
+  }, [service?.loading, fieldSchema]);
 
-export const TableBlockProvider = (props) => {
-  const params = { ...props.params };
-  const appends = useAssociationNames(props.collection);
-  const form = useMemo(() => createForm(), []);
-  if (props.dragSort) {
-    params['sort'] = ['sort'];
-  }
-  if (!Object.keys(params).includes('appends')) {
-    params['appends'] = appends;
-  }
+  const setExpandFlagValue = useCallback(
+    (flag) => {
+      setExpandFlag(flag || !expandFlag);
+    },
+    [expandFlag],
+  );
+
+  // Split from value to prevent unnecessary re-renders
+  const basicValue = useMemo(
+    () => ({
+      field,
+      rowKey,
+      childrenColumnName,
+      showIndex,
+      dragSort,
+      dragSortBy: props.dragSortBy,
+    }),
+    [field, rowKey, childrenColumnName, showIndex, dragSort, props.dragSortBy],
+  );
+
+  // Keep the original for compatibility
+  const value = useMemo(
+    () => ({
+      collection,
+      field,
+      service,
+      resource,
+      params,
+      showIndex,
+      dragSort,
+      rowKey,
+      expandFlag,
+      childrenColumnName,
+      allIncludesChildren,
+      setExpandFlag: setExpandFlagValue,
+      heightProps,
+    }),
+    [
+      allIncludesChildren,
+      childrenColumnName,
+      collection,
+      dragSort,
+      expandFlag,
+      field,
+      heightProps,
+      params,
+      resource,
+      rowKey,
+      service,
+      setExpandFlagValue,
+      showIndex,
+    ],
+  );
+
   return (
-    <FormContext.Provider value={form}>
-      <BlockProvider {...props} params={params}>
-        <InternalTableBlockProvider {...props} params={params} />
-      </BlockProvider>
-    </FormContext.Provider>
+    <TableElementRefContext.Provider value={tableElementRef}>
+      <TableBlockContext.Provider value={value}>
+        <TableBlockContextBasicValue.Provider value={basicValue}>{props.children}</TableBlockContextBasicValue.Provider>
+      </TableBlockContext.Provider>
+    </TableElementRefContext.Provider>
   );
 };
 
+/**
+ * @internal
+ * 用于兼容旧版本的 schema，当不需要兼容时可直接移除该方法
+ * @param props
+ * @returns
+ */
+const useTableBlockParamsCompat = (props) => {
+  const fieldSchema = useFieldSchema();
+
+  let params,
+    parseVariableLoading = false;
+  // 1. 新版本的 schema 存在 x-use-decorator-props 属性
+  if (fieldSchema['x-use-decorator-props']) {
+    params = props.params;
+    parseVariableLoading = props.parseVariableLoading;
+  } else {
+    // 2. 旧版本的 schema 不存在 x-use-decorator-props 属性
+    // 因为 schema 中是否存在 x-use-decorator-props 是固定不变的，所以这里可以使用 hooks
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    const tableBlockParams = useTableBlockParams(props);
+    params = tableBlockParams.params;
+    parseVariableLoading = tableBlockParams.parseVariableLoading;
+  }
+
+  return { params, parseVariableLoading };
+};
+
+export const TableBlockProvider = withDynamicSchemaProps((props) => {
+  const resourceName = props.resource || props.association;
+
+  const fieldSchema = useFieldSchema();
+  const { getCollection, getCollectionField } = useCollectionManager_deprecated(props.dataSource);
+  const collection = getCollection(props.collection, props.dataSource);
+  const { treeTable } = fieldSchema?.['x-decorator-props'] || {};
+  const { params, parseVariableLoading } = useTableBlockParamsCompat(props);
+  // Prevent tables with 'children' field from automatically converting to tree-structured tables
+  let childrenColumnName = '__nochildren__';
+
+  if (treeTable) {
+    childrenColumnName = 'children';
+
+    if (resourceName?.includes('.')) {
+      const f = getCollectionField(resourceName);
+      if (f?.treeChildren) {
+        childrenColumnName = f.name;
+      }
+      params['tree'] = true;
+    } else {
+      const f = collection?.fields.find((f) => f.treeChildren);
+      if (f) {
+        childrenColumnName = f.name;
+      }
+      params['tree'] = true;
+    }
+  } else {
+    childrenColumnName = '__nochildren__';
+  }
+  const form = useMemo(() => createForm(), [treeTable]);
+
+  // 在解析变量的时候不渲染，避免因为重复请求数据导致的资源浪费
+  if (parseVariableLoading) {
+    return null;
+  }
+
+  return (
+    <SchemaComponentOptions scope={{ treeTable }}>
+      <FormContext.Provider value={form}>
+        <BlockProvider name={props.name || 'table'} {...props} params={params} runWhenParamsChanged>
+          <InternalTableBlockProvider {...props} childrenColumnName={childrenColumnName} params={params} />
+        </BlockProvider>
+      </FormContext.Provider>
+    </SchemaComponentOptions>
+  );
+});
+
+/**
+ * @internal
+ */
 export const useTableBlockContext = () => {
   return useContext(TableBlockContext);
 };
 
-export const useTableBlockProps = () => {
-  const field = useField<ArrayField>();
-  const fieldSchema = useFieldSchema();
-  const ctx = useTableBlockContext();
-  const globalSort = fieldSchema.parent?.['x-decorator-props']?.['params']?.['sort'];
-  useEffect(() => {
-    if (!ctx?.service?.loading) {
-      field.value = ctx?.service?.data?.data;
-      field.data = field.data || {};
-      field.data.selectedRowKeys = ctx?.field?.data?.selectedRowKeys;
-      field.componentProps.pagination = field.componentProps.pagination || {};
-      field.componentProps.pagination.pageSize = ctx?.service?.data?.meta?.pageSize;
-      field.componentProps.pagination.total = ctx?.service?.data?.meta?.count;
-      field.componentProps.pagination.current = ctx?.service?.data?.meta?.page;
-    }
-  }, [ctx?.service?.loading]);
-  return {
-    loading: ctx?.service?.loading,
-    showIndex: ctx.showIndex,
-    dragSort: ctx.dragSort,
-    rowKey: ctx.rowKey || 'id',
-    pagination:
-      ctx?.params?.paginate !== false
-        ? {
-            defaultCurrent: ctx?.params?.page || 1,
-            defaultPageSize: ctx?.params?.pageSize,
-          }
-        : false,
-    onRowSelectionChange(selectedRowKeys) {
-      ctx.field.data = ctx?.field?.data || {};
-      ctx.field.data.selectedRowKeys = selectedRowKeys;
-    },
-    async onRowDragEnd({ from, to }) {
-      await ctx.resource.move({
-        sourceId: from[ctx.rowKey || 'id'],
-        targetId: to[ctx.rowKey || 'id'],
-      });
-      ctx.service.refresh();
-    },
-    onChange({ current, pageSize }, filters, sorter) {
-      let sort = sorter.order
-        ? sorter.order === `ascend`
-          ? [sorter.field]
-          : [`-${sorter.field}`]
-        : globalSort || ctx.service.params?.[0]?.sort;
-      ctx.service.run({ ...ctx.service.params?.[0], page: current, pageSize, sort });
-    },
-  };
+/**
+ * @internal
+ */
+export const useTableBlockContextBasicValue = () => {
+  return useContext(TableBlockContextBasicValue);
 };

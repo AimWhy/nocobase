@@ -1,15 +1,21 @@
+import { FormItem } from '@formily/antd-v5';
 import { ISchema, observer } from '@formily/react';
 import {
-  ActionContext,
-  AntdSchemaComponentProvider,
+  Action,
+  ActionContextProvider,
+  CustomRouterContextProvider,
+  Form,
+  Input,
   SchemaComponent,
   SchemaComponentProvider,
   useActionContext,
   useCloseAction,
-  useRequest
+  useRequest,
 } from '@nocobase/client';
 import { Button } from 'antd';
+import { createMemoryHistory } from 'history';
 import React, { useEffect, useState } from 'react';
+import { Router } from 'react-router-dom';
 
 const useValues = (options) => {
   const { visible } = useActionContext();
@@ -64,22 +70,25 @@ const schema: ISchema = {
 };
 
 export default observer(() => {
+  const history = createMemoryHistory();
   const [visible, setVisible] = useState(false);
 
   return (
-    <SchemaComponentProvider scope={{ useCloseAction }}>
-      <AntdSchemaComponentProvider>
-        <ActionContext.Provider value={{ visible, setVisible }}>
-          <Button
-            onClick={() => {
-              setVisible(true);
-            }}
-          >
-            编辑
-          </Button>
-          <SchemaComponent schema={schema} />
-        </ActionContext.Provider>
-      </AntdSchemaComponentProvider>
-    </SchemaComponentProvider>
+    <Router location={history.location} navigator={history}>
+      <CustomRouterContextProvider>
+        <SchemaComponentProvider components={{ Action, Input, FormItem, Form }} scope={{ useCloseAction }}>
+          <ActionContextProvider value={{ visible, setVisible }}>
+            <Button
+              onClick={() => {
+                setVisible(true);
+              }}
+            >
+              Edit
+            </Button>
+            <SchemaComponent schema={schema} />
+          </ActionContextProvider>
+        </SchemaComponentProvider>
+      </CustomRouterContextProvider>
+    </Router>
   );
 });

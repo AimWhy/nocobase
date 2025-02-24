@@ -1,11 +1,13 @@
+/**
+ * This file is part of the NocoBase (R) project.
+ * Copyright (c) 2020-2024 NocoBase Co., Ltd.
+ * Authors: NocoBase Team.
+ *
+ * This project is dual-licensed under AGPL-3.0 and NocoBase Commercial License.
+ * For more information, please refer to: https://www.nocobase.com/agreement.
+ */
+
 import { createContext } from 'react';
-import { CollectionFieldOptions, CollectionManagerOptions, CollectionOptions } from './types';
 
-export const CollectionManagerContext = createContext<CollectionManagerOptions>({
-  collections: [],
-  interfaces: {},
-});
-
-export const CollectionContext = createContext<CollectionOptions>({});
-
-export const CollectionFieldContext = createContext<CollectionFieldOptions>({});
+export const CollectionCategoriesContext = createContext({ data: [], refresh: () => {} });
+CollectionCategoriesContext.displayName = 'CollectionCategoriesContext';
